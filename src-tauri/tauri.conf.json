@@ -46,7 +46,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJCRDVFREI1NTQ5MDFGRjQKUldUMEg1QlV0ZTNWdTV1V0tscnlWTm8yUW9Ld2dKRldRTENWMXlYVnhsWjYwS2d5RXNMY1RQTjMK",
       "endpoints": [
         "https://github.com/devzoic/antigravity-lab/releases/latest/download/latest.json"
       ],
