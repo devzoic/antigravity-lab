@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+target/
+
+# Build output
+dist/
+
+# Environment files — NEVER commit secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Rust
+*.pdb
+src-tauri/gen/
+
+# Tauri build artifacts
+src-tauri/target/
+
+# Logs
+*.log
