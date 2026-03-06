@@ -58,7 +58,7 @@ jobs:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "AI Account Manager ${{ github.ref_name }}"
+          releaseName: "Antigravity Lab ${{ github.ref_name }}"
           releaseBody: "See the assets below to download and install."
           releaseDraft: false
           prerelease: false
