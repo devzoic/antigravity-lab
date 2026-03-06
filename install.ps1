@@ -6,7 +6,7 @@
 
 $ErrorActionPreference = "Stop"
 $REPO = "devzoic/antigravity-lab"
-$APP_NAME = "AI Account Manager"
+$APP_NAME = "Antigravity Lab"
 
 Write-Host ""
 Write-Host "  $APP_NAME — Windows Installer" -ForegroundColor Cyan

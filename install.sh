@@ -8,7 +8,7 @@
 set -euo pipefail
 
 REPO="devzoic/antigravity-lab"
-APP_NAME="AI Account Manager"
+APP_NAME="Antigravity Lab"
 VERSION="${1:-latest}"
 
 # ── Colors ──
