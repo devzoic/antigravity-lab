@@ -108,14 +108,6 @@ class ApiService {
         if (proofFile) formData.append('proof_file', proofFile);
         return this.request('POST', '/payments/submit', formData, true);
     }
-
-    // Update check (public, no auth)
-    async checkUpdate(currentVersion) {
-        const res = await fetch(`${this.baseUrl}/client/check-update?current_version=${currentVersion}`, {
-            headers: { 'Accept': 'application/json' },
-        });
-        return res.json();
-    }
 }
 
 export const api = new ApiService();
