@@ -118,7 +118,7 @@ export default function LoginPage() {
       <div className="login-card">
         <div className="login-brand">
           <div className="icon-wrap"><Icon name="zap" size={22} color="#fff" /></div>
-          <h1>AI Account Manager</h1>
+          <h1>Antigravity Lab</h1>
           <p>Access your Google AI Ultra accounts</p>
         </div>
 

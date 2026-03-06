@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AI Account Manager",
+  "productName": "Antigravity Lab",
   "version": "1.0.0",
   "identifier": "com.aidashboard.client",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "AI Account Manager",
+        "title": "Antigravity Lab",
         "width": 980,
         "height": 680,
         "resizable": true,
@@ -29,7 +29,7 @@
       "id": "main-tray",
       "iconPath": "icons/icon.png",
       "iconAsTemplate": true,
-      "tooltip": "AI Account Manager"
+      "tooltip": "Antigravity Lab"
     }
   },
   "bundle": {
