@@ -5,9 +5,9 @@ target/
 # Build output
 dist/
 
-# Environment files — NEVER commit secrets
+# Environment — only ignore local dev env
 .env
-.env.*
+!.env.production
 !.env.example
 
 # IDE

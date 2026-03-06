@@ -49,9 +49,6 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Write production env
-        run: echo "VITE_API_URL=${{ secrets.VITE_API_URL }}" > .env.production
-
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
