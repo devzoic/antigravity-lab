@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use tauri::{
-    Manager,
+    Manager, RunEvent,
     menu::{Menu, MenuItem},
     tray::TrayIconEvent,
     WindowEvent,
@@ -341,6 +341,15 @@ pub fn run() {
                 let _ = window.hide();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Re-show window when dock icon is clicked on macOS
+            if let RunEvent::Reopen { .. } = event {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+        });
 }
