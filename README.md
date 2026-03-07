@@ -1,10 +1,12 @@
 <div align="center">
 
-# ⚡ AI Account Manager
+<img src="https://fivpilot.com/images/logo.svg" alt="Antigravity Lab" width="200" />
 
-**Professional desktop client for seamless AI account management & switching**
+# Antigravity Lab
 
-Built with **Tauri v2** + **React** (Rust backend)
+**Google Antigravity Accounts Management — Desktop Client**
+
+🌐 [**Get Premium Accounts → fivpilot.com**](https://fivpilot.com)
 
 [![Release](https://img.shields.io/github/v/release/devzoic/antigravity-lab?style=flat-square&color=blue)](https://github.com/devzoic/antigravity-lab/releases)
 [![License](https://img.shields.io/github/license/devzoic/antigravity-lab?style=flat-square)](LICENSE)
@@ -14,10 +16,36 @@ Built with **Tauri v2** + **React** (Rust backend)
 
 ---
 
-## ✨ Features
+## ✨ What is Antigravity Lab?
 
-- 🔀 **One-Click Account Switching** — Seamlessly switch between AI accounts
-- 🔐 **Secure Token Injection** — Compiled Rust backend, no source code exposure
+<p align="center">
+  <img src="https://fivpilot.com/images/antigravity-logo.png" alt="Antigravity" width="120" />
+</p>
+
+Antigravity Lab is a professional desktop client for managing and switching between **Google Antigravity** accounts. It provides secure token injection, seamless one-click account switching, and always-on background access via the system tray.
+
+---
+
+## 📸 Screenshots
+
+<p align="center">
+  <img src="https://fivpilot.com/images/screenshot-web.png" alt="Web Dashboard" width="700" />
+</p>
+<p align="center"><em>Web Dashboard — Manage your accounts & subscriptions</em></p>
+
+<br />
+
+<p align="center">
+  <img src="https://fivpilot.com/images/screenshot-client.png" alt="Desktop Client" width="700" />
+</p>
+<p align="center"><em>Desktop Client — One-click account switching & token injection</em></p>
+
+---
+
+## 🚀 Features
+
+- 🔀 **One-Click Account Switching** — Seamlessly switch between Antigravity accounts
+- 🔐 **Secure Token Injection** — Compiled backend, no source code exposure
 - 📌 **System Tray** — Runs in background, always accessible from menu bar/taskbar
 - 🔄 **Auto-Update** — Automatically checks for updates on launch
 - 🚀 **Auto-Start** — Launches on system boot
@@ -91,34 +119,6 @@ irm https://raw.githubusercontent.com/devzoic/antigravity-lab/main/install.ps1 |
 | **Click tray icon**         | Window reappears                         |
 | **Right-click tray icon**   | Show / Hide / Quit menu                  |
 | **System boot**             | App starts automatically in background   |
-
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────┐
-│         React Frontend          │  ← UI layer (bundled, not exposed)
-├─────────────────────────────────┤
-│       Tauri v2 Bridge           │  ← IPC between frontend & backend
-├─────────────────────────────────┤
-│        Rust Backend             │  ← Compiled binary, secure
-│  • Token injection              │
-│  • Hardware fingerprint (HWID)  │
-│  • Process management           │
-│  • System tray                  │
-│  • Auto-updater                 │
-└─────────────────────────────────┘
-```
-
----
-
-## 🔒 Security
-
-- **Compiled Rust binary** — source code is not readable by end users
-- **No secrets in client** — API keys live server-side only
-- **Hardware fingerprint** — device-based session tracking
-- **Signed updates** — updates verified via public key signature
 
 ---
 
