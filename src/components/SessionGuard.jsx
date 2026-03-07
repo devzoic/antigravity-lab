@@ -14,7 +14,7 @@ const REASON_MESSAGES = {
 };
 
 export default function SessionGuard({ children }) {
-  const { hardwareInfo, isLoggedIn } = useAuth();
+  const { user, hardwareInfo } = useAuth();
   const [revoked, setRevoked] = useState(false);
   const [revokeReason, setRevokeReason] = useState('');
   const [refreshStatus, setRefreshStatus] = useState(''); // '' | 'refreshing'
@@ -24,7 +24,7 @@ export default function SessionGuard({ children }) {
 
   // ─── Security Heartbeat (every 5 min) ──────────────────────────
   async function checkHeartbeat() {
-    if (!isLoggedIn || !hardwareInfo?.hardware_id) return;
+    if (!user || !hardwareInfo?.hardware_id) return;
 
     try {
       const data = await api.sessionHeartbeat(hardwareInfo.hardware_id);
@@ -45,7 +45,7 @@ export default function SessionGuard({ children }) {
 
   // ─── Token Auto-Refresh (every 50 min) ─────────────────────────
   async function refreshTokens() {
-    if (!isLoggedIn || !hardwareInfo?.hardware_id) return;
+    if (!user || !hardwareInfo?.hardware_id) return;
 
     const accounts = activeAccountsRef.current;
     if (!accounts.length) {
@@ -140,7 +140,7 @@ export default function SessionGuard({ children }) {
 
   // ─── Start Timers ──────────────────────────────────────────────
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!user) return;
 
     // Initial heartbeat after 10 seconds
     const initTimeout = setTimeout(() => {
@@ -158,7 +158,7 @@ export default function SessionGuard({ children }) {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
       if (tokenRefreshRef.current) clearInterval(tokenRefreshRef.current);
     };
-  }, [isLoggedIn, hardwareInfo]);
+  }, [user, hardwareInfo]);
 
   // ─── Revoked Lock Screen ──────────────────────────────────────
   if (revoked) {
