@@ -11,6 +11,7 @@ const REASON_MESSAGES = {
   subscription_expired: 'Your subscription has expired.',
   no_assignments: 'Your account access has been revoked.',
   device_mismatch: 'This device is no longer authorized.',
+  device_switched: 'You logged in on another device. Log in again to use this one.',
 };
 
 export default function SessionGuard({ children }) {
