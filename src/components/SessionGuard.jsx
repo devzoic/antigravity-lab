@@ -44,6 +44,8 @@ export default function SessionGuard({ children }) {
   }
 
   // ─── Token Auto-Refresh (every 50 min) ─────────────────────────
+  // Silently injects fresh token into Antigravity's DB without
+  // killing or restarting. AG picks it up on its next token check.
   async function refreshTokens() {
     if (!user || !hardwareInfo?.hardware_id) return;
 
@@ -53,70 +55,39 @@ export default function SessionGuard({ children }) {
       return;
     }
 
-    console.log(`[SessionGuard] Refreshing tokens for ${accounts.length} account(s)...`);
-    setRefreshStatus('refreshing');
+    console.log(`[SessionGuard] Silently refreshing tokens for ${accounts.length} account(s)...`);
 
     try {
-      // 1. Get fresh tokens for all accounts FIRST (before killing AG)
-      const freshTokens = [];
-      for (const acc of accounts) {
-        try {
-          const tokenData = await api.getAccountToken(acc.id, hardwareInfo.hardware_id);
-          freshTokens.push({ ...acc, ...tokenData });
-        } catch (e) {
-          console.warn(`[SessionGuard] Token refresh failed for ${acc.email}:`, e.message);
-          // If token proxy rejects, session may be invalid — check heartbeat
-          if (e.message?.includes('No active subscription') || e.message?.includes('not assigned')) {
-            await checkHeartbeat();
-            return;
-          }
-        }
-      }
+      // 1. Get fresh token from server
+      const primary = accounts[0];
+      const tokenData = await api.getAccountToken(primary.id, hardwareInfo.hardware_id);
 
-      if (freshTokens.length === 0) {
-        setRefreshStatus('');
+      if (!tokenData?.access_token) {
+        console.warn('[SessionGuard] No token received from server');
         return;
       }
 
-      // 2. Kill Antigravity
-      try { await invoke('kill_antigravity'); } catch (e) { /* may not be running */ }
-      await new Promise(r => setTimeout(r, 2500));
-
-      // 3. Inject the latest token (use the first/primary account)
-      const primary = freshTokens[0];
+      // 2. Inject into Antigravity's DB — NO kill, NO restart
       try {
         await invoke('inject_antigravity_token', {
           request: {
-            access_token: primary.access_token,
+            access_token: tokenData.access_token,
             refresh_token: 'proxy-managed',
-            expiry: primary.expires_at || Math.floor(Date.now() / 1000) + 3600,
+            expiry: tokenData.expires_at || Math.floor(Date.now() / 1000) + 3600,
             email: primary.email,
           }
         });
+        console.log('[SessionGuard] Token silently injected into DB ✓');
       } catch (e) {
-        console.warn('[SessionGuard] Injection failed:', e);
+        console.warn('[SessionGuard] Silent injection failed:', e);
       }
-
-      // 4. Relaunch Antigravity
-      try {
-        await invoke('switch_and_restart_antigravity', {
-          request: {
-            access_token: primary.access_token,
-            refresh_token: 'proxy-managed',
-            expiry: primary.expires_at || Math.floor(Date.now() / 1000) + 3600,
-            email: primary.email,
-          }
-        });
-      } catch (e) {
-        console.warn('[SessionGuard] Relaunch failed:', e);
-      }
-
-      console.log('[SessionGuard] Token refresh complete ✓');
     } catch (e) {
       console.warn('[SessionGuard] Token refresh error:', e.message);
+      // If token proxy rejects, session may be invalid
+      if (e.message?.includes('No active subscription') || e.message?.includes('not assigned')) {
+        await checkHeartbeat();
+      }
     }
-
-    setRefreshStatus('');
   }
 
   // ─── Revoke & Wipe ────────────────────────────────────────────

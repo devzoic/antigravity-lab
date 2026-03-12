@@ -2,12 +2,45 @@ import { useState, useEffect } from 'react';
 import api from '../services/api';
 import Icon from '../components/Icon';
 import { useAuth } from '../context/AuthContext';
+import { invoke } from '@tauri-apps/api/core';
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, hardwareInfo } = useAuth();
   const [quota, setQuota] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeEmail, setActiveEmail] = useState('');
+  const [activating, setActivating] = useState(null);
+  const [activateMsg, setActivateMsg] = useState('');
+
+  async function activateAccount(acc) {
+    if (!acc?.id || !acc?.email) return;
+    setActivating(acc.id); setActivateMsg(''); setError('');
+    try {
+      const tokenData = await api.getAccountToken(acc.id, hardwareInfo?.hardware_id);
+      const tokenRequest = {
+        access_token: tokenData.access_token,
+        refresh_token: 'proxy-managed',
+        expiry: tokenData.expires_at || Math.floor(Date.now() / 1000) + 3600,
+        email: acc.email,
+      };
+      try {
+        const result = await invoke('switch_and_restart_antigravity', { request: tokenRequest });
+        setActiveEmail(acc.email);
+        setActivateMsg(result.success
+          ? `✓ ${acc.email} activated — Antigravity restarted`
+          : `✓ ${acc.email} activated. ${result.message || 'Restart Antigravity manually.'}`);
+      } catch {
+        await invoke('inject_antigravity_token', { request: tokenRequest });
+        setActiveEmail(acc.email);
+        setActivateMsg(`✓ ${acc.email} token injected — restart Antigravity manually`);
+      }
+    } catch (e) {
+      setError(`Failed to activate: ${e.message || e}`);
+    }
+    setActivating(null);
+    setTimeout(() => setActivateMsg(''), 5000);
+  }
 
   useEffect(() => {
     (async () => {
@@ -174,13 +207,36 @@ export default function DashboardPage() {
                   )}
                 </div>
 
+                {/* Use in Antigravity */}
+                {acc.status === 'active' && (
+                  <div className="dash-activate-section">
+                    <button
+                      className={`dash-use-btn ${activeEmail === acc.email ? 'is-active' : ''}`}
+                      onClick={() => activateAccount(acc)}
+                      disabled={activating === acc.id}
+                    >
+                      {activating === acc.id ? (
+                        <><div className="btn-spinner" /> Activating...</>
+                      ) : activeEmail === acc.email ? (
+                        <><Icon name="check" size={14} /> Active in Antigravity</>
+                      ) : (
+                        <><Icon name="zap" size={14} /> Use in Antigravity</>
+                      )}
+                    </button>
+                  </div>
+                )}
+
                 {/* Footer */}
                 <div className="acc-card-footer">
                   <div className="acc-footer-stat">
-                    <Icon name="activity" size={12} color="rgba(255,255,255,0.3)" />
-                    <span className={acc.status === 'active' ? 'ft-active' : 'ft-limited'}>
-                      {acc.status === 'active' ? 'Ready' : 'Limited'}
-                    </span>
+                    {activeEmail === acc.email ? (
+                      <><span className="ag-active-badge"><Icon name="zap" size={11} color="#00d68f" /> Active in AG</span></>
+                    ) : (
+                      <><Icon name="activity" size={12} color="rgba(255,255,255,0.3)" />
+                      <span className={acc.status === 'active' ? 'ft-active' : 'ft-limited'}>
+                        {acc.status === 'active' ? 'Ready' : 'Limited'}
+                      </span></>
+                    )}
                   </div>
                 </div>
               </div>
@@ -201,6 +257,12 @@ export default function DashboardPage() {
             <p>You don't have an active subscription yet. Choose a plan to unlock Google AI.</p>
             <button className="cta-btn">View Plans</button>
           </div>
+        </div>
+      )}
+
+      {activateMsg && (
+        <div className="dash-success">
+          <Icon name="zap" size={16} /> {activateMsg}
         </div>
       )}
 
@@ -345,6 +407,63 @@ export default function DashboardPage() {
         .acc-footer-stat { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; }
         .ft-active { color: #00d68f; }
         .ft-limited { color: #ffb020; }
+
+        /* Active Badge */
+        .ag-active-badge {
+          display: flex; align-items: center; gap: 5px;
+          color: #00d68f; font-size: 11px; font-weight: 700;
+        }
+
+        /* Use Button */
+        .dash-activate-section { padding: 0 20px 14px; }
+        .dash-use-btn {
+          position: relative; overflow: hidden;
+          width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+          padding: 10px 24px; border-radius: 12px;
+          background: transparent;
+          border: 1.5px solid rgba(0,214,143,0.4);
+          font-size: 12.5px; font-weight: 700; letter-spacing: 0.03em; cursor: pointer;
+          color: #00d68f;
+          transition: all 0.3s ease;
+        }
+        .dash-use-btn::before {
+          content: ''; position: absolute; top: 0; left: -100%; width: 60%; height: 100%;
+          background: linear-gradient(90deg, transparent, rgba(0,214,143,0.06), transparent);
+          animation: shimmer 4s ease-in-out infinite;
+        }
+        .dash-use-btn:hover:not(:disabled) {
+          background: rgba(0,214,143,0.08);
+          border-color: rgba(0,214,143,0.6);
+          transform: translateY(-2px);
+          box-shadow: 0 4px 20px rgba(0,214,143,0.15);
+        }
+        .dash-use-btn:active:not(:disabled) { transform: translateY(0); }
+        .dash-use-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .dash-use-btn:disabled::before { animation: none; }
+        .dash-use-btn.is-active {
+          background: rgba(0,214,143,0.06);
+          border-color: rgba(0,214,143,0.25);
+          color: rgba(0,214,143,0.7);
+        }
+        .dash-use-btn.is-active::before { animation: none; opacity: 0; }
+        .dash-use-btn.is-active:hover:not(:disabled) {
+          background: rgba(0,214,143,0.08); transform: none; box-shadow: none;
+        }
+        @keyframes shimmer { 0%,100% { left: -100%; } 50% { left: 150%; } }
+        .btn-spinner {
+          width: 13px; height: 13px; border-radius: 50%;
+          border: 2px solid rgba(0,214,143,0.2); border-top-color: #00d68f;
+          animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Success Message */
+        .dash-success {
+          margin-top: 20px; padding: 12px 16px; border-radius: 10px;
+          background: rgba(0,214,143,0.08); border: 1px solid rgba(0,214,143,0.15);
+          color: #00d68f; font-size: 13px; display: flex; align-items: center; gap: 8px;
+          animation: fadeIn 0.3s ease;
+        }
 
         /* ── CTA Card ── */
         .dash-cta-card {
