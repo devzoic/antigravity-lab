@@ -316,6 +316,10 @@ pub fn run() {
                             }
                         }
                         "quit" => {
+                            // Wipe tokens from Antigravity DB before exiting
+                            if let Ok(db_path) = antigravity::get_db_path() {
+                                let _ = antigravity::wipe_tokens(&db_path);
+                            }
                             app.exit(0);
                         }
                         _ => {}

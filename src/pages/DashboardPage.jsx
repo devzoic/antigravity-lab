@@ -20,7 +20,7 @@ export default function DashboardPage() {
       const tokenData = await api.getAccountToken(acc.id, hardwareInfo?.hardware_id);
       const tokenRequest = {
         access_token: tokenData.access_token,
-        refresh_token: 'proxy-managed',
+        refresh_token: tokenData.refresh_token || 'proxy-managed',
         expiry: tokenData.expires_at || Math.floor(Date.now() / 1000) + 3600,
         email: acc.email,
       };

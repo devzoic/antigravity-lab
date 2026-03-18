@@ -167,6 +167,8 @@ fn inject_new_format(
 ) -> Result<String, String> {
     let conn = Connection::open(db_path)
         .map_err(|e| format!("Failed to open database: {}", e))?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| format!("Failed to set busy timeout: {}", e))?;
 
     // Create OAuthTokenInfo (binary protobuf)
     let oauth_info = create_oauth_info(access_token, refresh_token, expiry);
@@ -210,6 +212,8 @@ fn inject_old_format(
 ) -> Result<String, String> {
     let conn = Connection::open(db_path)
         .map_err(|e| format!("Failed to open database: {}", e))?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| format!("Failed to set busy timeout: {}", e))?;
 
     // Check if old format key exists
     let current_data: Result<String, _> = conn.query_row(
@@ -325,6 +329,8 @@ fn decode_varint(data: &[u8]) -> (u64, usize) {
 pub fn wipe_tokens(db_path: &PathBuf) -> Result<String, String> {
     let conn = Connection::open(db_path)
         .map_err(|e| format!("Failed to open database: {}", e))?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| format!("Failed to set busy timeout: {}", e))?;
 
     // Delete token entries (both formats)
     let keys = [

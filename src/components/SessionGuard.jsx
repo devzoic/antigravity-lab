@@ -22,6 +22,11 @@ export default function SessionGuard({ children }) {
   const heartbeatRef = useRef(null);
   const tokenRefreshRef = useRef(null);
   const activeAccountsRef = useRef([]); // Track accounts from heartbeat
+  const allowRefreshTokenRef = useRef(false); // Tier flag from server
+
+  // Refs for stable interval callbacks (fixes stale closure bug)
+  const checkHeartbeatRef = useRef(null);
+  const refreshTokensRef = useRef(null);
 
   // ─── Security Heartbeat (every 5 min) ──────────────────────────
   async function checkHeartbeat() {
@@ -36,27 +41,41 @@ export default function SessionGuard({ children }) {
         return;
       }
 
-      // Store active accounts for token refresh cycle
-      activeAccountsRef.current = data.active_accounts || [];
+      // Only overwrite accounts if we got real data (protects against bad heartbeats)
+      if (data.active_accounts?.length) {
+        activeAccountsRef.current = data.active_accounts;
+      }
+
+      // Track tier flag from server
+      if (data.allow_refresh_token !== undefined) {
+        allowRefreshTokenRef.current = data.allow_refresh_token;
+      }
     } catch (e) {
-      // Network error — don't wipe, just skip
+      // Network error — don't wipe, don't overwrite accounts, just skip
       console.warn('[SessionGuard] Heartbeat failed:', e.message);
     }
   }
 
   // ─── Token Auto-Refresh (every 50 min) ─────────────────────────
-  // Silently injects fresh token into Antigravity's DB without
-  // killing or restarting. AG picks it up on its next token check.
+  // Tier 1 (allow_refresh_token=true): Refresh token already in AG, skip injection
+  // Tier 2 (allow_refresh_token=false): Silently inject fresh access token into AG's DB
   async function refreshTokens() {
     if (!user || !hardwareInfo?.hardware_id) return;
 
+    // Tier 1: Antigravity has the real refresh token, handles its own refresh
+    if (allowRefreshTokenRef.current) {
+      console.log('[SessionGuard] Tier 1 — Antigravity self-refreshes, skipping injection');
+      return;
+    }
+
+    // Tier 2: Silent injection of fresh access token
     const accounts = activeAccountsRef.current;
     if (!accounts.length) {
       console.log('[SessionGuard] No active accounts to refresh');
       return;
     }
 
-    console.log(`[SessionGuard] Silently refreshing tokens for ${accounts.length} account(s)...`);
+    console.log(`[SessionGuard] Tier 2 — Silently refreshing tokens for ${accounts.length} account(s)...`);
 
     try {
       // 1. Get fresh token from server
@@ -73,14 +92,30 @@ export default function SessionGuard({ children }) {
         await invoke('inject_antigravity_token', {
           request: {
             access_token: tokenData.access_token,
-            refresh_token: 'proxy-managed',
+            refresh_token: tokenData.refresh_token || 'proxy-managed',
             expiry: tokenData.expires_at || Math.floor(Date.now() / 1000) + 3600,
             email: primary.email,
           }
         });
         console.log('[SessionGuard] Token silently injected into DB ✓');
       } catch (e) {
-        console.warn('[SessionGuard] Silent injection failed:', e);
+        console.error('[SessionGuard] Silent injection failed:', e);
+        // Retry once after 3 seconds (DB might be briefly locked)
+        setTimeout(async () => {
+          try {
+            await invoke('inject_antigravity_token', {
+              request: {
+                access_token: tokenData.access_token,
+                refresh_token: tokenData.refresh_token || 'proxy-managed',
+                expiry: tokenData.expires_at || Math.floor(Date.now() / 1000) + 3600,
+                email: primary.email,
+              }
+            });
+            console.log('[SessionGuard] Token injected on retry ✓');
+          } catch (e2) {
+            console.error('[SessionGuard] Retry also failed:', e2);
+          }
+        }, 3000);
       }
     } catch (e) {
       console.warn('[SessionGuard] Token refresh error:', e.message);
@@ -110,19 +145,23 @@ export default function SessionGuard({ children }) {
     if (tokenRefreshRef.current) clearInterval(tokenRefreshRef.current);
   }
 
+  // ─── Keep refs pointing to latest function versions ────────────
+  useEffect(() => { checkHeartbeatRef.current = checkHeartbeat; });
+  useEffect(() => { refreshTokensRef.current = refreshTokens; });
+
   // ─── Start Timers ──────────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
 
     // Initial heartbeat after 10 seconds
     const initTimeout = setTimeout(() => {
-      checkHeartbeat();
+      checkHeartbeatRef.current?.();
 
       // Security heartbeat: every 5 minutes
-      heartbeatRef.current = setInterval(checkHeartbeat, HEARTBEAT_INTERVAL);
+      heartbeatRef.current = setInterval(() => checkHeartbeatRef.current?.(), HEARTBEAT_INTERVAL);
 
-      // Token refresh: every 50 minutes
-      tokenRefreshRef.current = setInterval(refreshTokens, TOKEN_REFRESH_INTERVAL);
+      // Token refresh: every 50 minutes (Tier 1 will skip, Tier 2 will inject)
+      tokenRefreshRef.current = setInterval(() => refreshTokensRef.current?.(), TOKEN_REFRESH_INTERVAL);
     }, 10000);
 
     return () => {
@@ -130,7 +169,7 @@ export default function SessionGuard({ children }) {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
       if (tokenRefreshRef.current) clearInterval(tokenRefreshRef.current);
     };
-  }, [user, hardwareInfo]);
+  }, [user]);
 
   // ─── Revoked Lock Screen ──────────────────────────────────────
   if (revoked) {
