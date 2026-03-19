@@ -22,7 +22,7 @@ export default function AccountsPage() {
       const tokenData = await api.getAccountToken(acc.id, hardwareInfo?.hardware_id);
       const tokenRequest = {
         access_token: tokenData.access_token,
-        refresh_token: 'proxy-managed',
+        refresh_token: tokenData.refresh_token || 'proxy-managed',
         expiry: tokenData.expires_at || Math.floor(Date.now() / 1000) + 3600,
         email: acc.email,
       };
@@ -67,7 +67,7 @@ export default function AccountsPage() {
       const result = await invoke('inject_antigravity_token', {
         request: {
           access_token: tokenData.access_token,
-          refresh_token: 'proxy-managed',
+          refresh_token: tokenData.refresh_token || 'proxy-managed',
           expiry: tokenData.expires_at || Math.floor(Date.now() / 1000) + 3600,
           email: account.email,
         }
@@ -99,7 +99,7 @@ export default function AccountsPage() {
         const result = await invoke('switch_and_restart_antigravity', {
           request: {
             access_token: tokenData.access_token,
-            refresh_token: 'proxy-managed',
+            refresh_token: tokenData.refresh_token || 'proxy-managed',
             expiry: tokenData.expires_at || Math.floor(Date.now() / 1000) + 3600,
             email: account.email,
           }
