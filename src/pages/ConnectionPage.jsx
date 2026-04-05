@@ -53,23 +53,28 @@ export default function ConnectionPage() {
     setProxyLoading("connect");
     setProxyMsg("");
     try {
+      // Step 1: Kill Antigravity FIRST so the language server binary is unlocked
+      setProxyMsg("Stopping Antigravity...");
+      try {
+        await invoke("kill_antigravity");
+      } catch {}
+      await new Promise(r => setTimeout(r, 2500)); // Wait for full process exit
+
+      // Step 2: Inject settings into Antigravity's settings.json
       await invoke("sync_gemini_config", { proxyUrl: PROXY_URL });
+
+      // Step 3: Wrap the language server binary (safely overwrites previous script because we unlocked the directory)
       try {
         await invoke("wrap_lang_server", { proxyUrl: PROXY_URL });
       } catch (e) {
         console.warn("Wrapper failed:", e);
       }
+
+      // No token wipe because we keep user's actual token
+
+      // Step 5: Relaunch Antigravity with new config
+      await new Promise(r => setTimeout(r, 500));
       try {
-        await invoke("inject_session_uuid", { 
-          userId: parseInt(user.id, 10), 
-          hwid: hardwareInfo?.hardware_id || "unknown" 
-        });
-      } catch (e) {
-        console.warn("UUID injection failed:", e);
-      }
-      try {
-        await invoke("kill_antigravity");
-        await new Promise(r => setTimeout(r, 1500));
         await invoke("restart_antigravity");
       } catch {}
 
@@ -85,13 +90,25 @@ export default function ConnectionPage() {
     setProxyLoading("disconnect");
     setProxyMsg("");
     try {
+      // Step 1: Kill Antigravity first so binary is unlocked
+      setProxyMsg("Stopping Antigravity...");
+      try {
+        await invoke("kill_antigravity");
+      } catch {}
+      await new Promise(r => setTimeout(r, 2500));
+
+      // Step 2: Restore settings & unwrap binary
       await invoke("restore_gemini_config");
       try {
         await invoke("unwrap_lang_server");
       } catch (e) {}
+
+      // Step 3: Relaunch
+      await new Promise(r => setTimeout(r, 500));
       try {
         await invoke("restart_antigravity");
       } catch {}
+
       setProxyMsg("✓ Network bridge disconnected. IDE restored to direct connection.");
       await refreshStatus();
     } catch (e) {

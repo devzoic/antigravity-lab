@@ -2,7 +2,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'https://google.test/api';
 
 // Dynamically use PROD proxy URL when the Tauri app is built for release, otherwise use DEV proxy URL
 export const PROXY_URL = import.meta.env.PROD
-    ? (import.meta.env.VITE_PROXY_URL_PROD || 'https://google.devzoic.com')
+    ? (import.meta.env.VITE_PROXY_URL_PROD || 'https://proxy.devzoic.com')
     : (import.meta.env.VITE_PROXY_URL_DEV || 'https://google.test:4433');
 class ApiService {
     constructor() {

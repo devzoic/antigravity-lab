@@ -1,6 +1,6 @@
 [package]
 name = "client"
-version = "1.0.0"
+version = "1.0.10"
 description = "AI Account Manager — Desktop Client"
 authors = ["AI Dashboard"]
 edition = "2021"

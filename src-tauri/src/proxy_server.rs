@@ -1199,6 +1199,19 @@ pub fn wrap_language_server(proxy_url: &str) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     let real_path = server_path.with_extension("real.exe");
 
+    // UNLOCK directory first so we don't get permission denied on subsequent writes
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Some(bin_dir) = server_path.parent() {
+            if let Ok(meta) = std::fs::metadata(bin_dir) {
+                let mut perms = meta.permissions();
+                perms.set_mode(0o755);
+                let _ = std::fs::set_permissions(bin_dir, perms);
+            }
+        }
+    }
+
     // Check if the original binary is a real binary (not already a script)
     if !real_path.exists() {
         // Read first bytes to check if already a script
@@ -1227,18 +1240,6 @@ pub fn wrap_language_server(proxy_url: &str) -> Result<String, String> {
         let wrapper = format!(
             r#"#!/bin/bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
-COMBINED="$HOME/.antigravity-lab/combined-certs.pem"
-mkdir -p "$HOME/.antigravity-lab"
-
-{{
-  security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain 2>/dev/null
-  security find-certificate -a -p /Library/Keychains/System.keychain 2>/dev/null
-  security find-certificate -a -p "$HOME/Library/Keychains/login.keychain-db" 2>/dev/null
-  cat "$HOME/Library/Application Support/Herd/config/valet/CA/LaravelValetCASelfSigned.pem" 2>/dev/null
-}} > "$COMBINED" 2>/dev/null
-
-export SSL_CERT_FILE="$COMBINED"
-export GRPC_DEFAULT_SSL_ROOTS_FILE_PATH="$COMBINED"
 
 ARGS=()
 NEXT_IS_ENDPOINT=false

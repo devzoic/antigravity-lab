@@ -159,7 +159,7 @@ async fn inject_session_uuid(user_id: u64, hwid: String) -> Result<String, Strin
     let fake_refresh = "proxy-managed".to_string();
     let expiry = 2051222400; // 2035
     
-    antigravity::inject_token(&db_path, &fake_access_token, &fake_refresh, expiry, "proxy@antigravity.local")
+    antigravity::inject_token(&db_path, &fake_access_token, &fake_refresh, expiry)
         .map_err(|e| e.to_string())
 }
 

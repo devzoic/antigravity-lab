@@ -66,11 +66,10 @@ pub fn inject_token(
     access_token: &str,
     refresh_token: &str,
     expiry: i64,
-    email: &str,
 ) -> Result<String, String> {
     // Try new format first, then old format
     let new_result = inject_new_format(db_path, access_token, refresh_token, expiry);
-    let old_result = inject_old_format(db_path, access_token, refresh_token, expiry, email);
+    let old_result = inject_old_format(db_path, access_token, refresh_token, expiry);
 
     if new_result.is_ok() || old_result.is_ok() {
         Ok("Token injection successful — restart Antigravity to apply changes".to_string())
@@ -208,7 +207,6 @@ fn inject_old_format(
     access_token: &str,
     refresh_token: &str,
     expiry: i64,
-    email: &str,
 ) -> Result<String, String> {
     let conn = Connection::open(db_path)
         .map_err(|e| format!("Failed to open database: {}", e))?;
@@ -229,14 +227,13 @@ fn inject_old_format(
                 .decode(&existing)
                 .map_err(|e| format!("Base64 decoding failed: {}", e))?;
 
-            // Build new protobuf with email + OAuth token
-            let new_email_field = encode_string_field(2, email);
+            // Build new OAuth token field only — preserve existing identity fields
             let oauth_info = create_oauth_info(access_token, refresh_token, expiry);
             let oauth_field = encode_len_delim_field(6, &oauth_info);
 
-            // Remove old fields 1,2,6 and rebuild
-            let clean = remove_protobuf_fields(&blob, &[1, 2, 6]);
-            let final_data = [clean, new_email_field, oauth_field].concat();
+            // Only remove field 6 (OAuth token) — keep fields 1,2 (identity/email) intact
+            let clean = remove_protobuf_fields(&blob, &[6]);
+            let final_data = [clean, oauth_field].concat();
             let final_b64 = general_purpose::STANDARD.encode(&final_data);
 
             conn.execute(

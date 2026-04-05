@@ -61,7 +61,7 @@ export default function SessionGuard({ children }) {
     await new Promise(r => setTimeout(r, 1500));
 
     // 2. Wipe tokens
-    try { await invoke('wipe_antigravity_tokens'); } catch (e) { /* ok */ }
+    // We intentionally DO NOT wipe IDE tokens anymore, to preserve user's personal auth
 
     // 3. Show lock screen
     const reason = (reasons || []).map(r => REASON_MESSAGES[r] || r).join(' ');
