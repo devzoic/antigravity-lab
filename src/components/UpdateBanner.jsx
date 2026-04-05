@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Icon from './Icon';
 
-const APP_VERSION = '1.0.7';
+const APP_VERSION = '1.0.9';
 
 export default function UpdateBanner() {
   const [update, setUpdate] = useState(null);
