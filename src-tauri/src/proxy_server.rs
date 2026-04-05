@@ -1108,6 +1108,8 @@ exec "$DIR/$(basename "$0").real" "${{ARGS[@]}}"
 
     #[cfg(target_os = "windows")]
     {
+        use tauri::Manager;
+        
         // On Windows, the bash script won't work, so we use the compiled sidecar.
         let mut sidecar_path = app
             .path()
