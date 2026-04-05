@@ -1,6 +1,12 @@
 use std::env;
 use std::process::{Command, exit};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+// Signature to prevent the proxy_server from double-wrapping the wrapper itself
+pub const ANTIGRAVITY_SIG: &[u8] = b"ANTIGRAVITY_RUST_WRAPPER_V1";
+
 fn main() {
     let mut args: Vec<String> = env::args().collect();
     
@@ -26,10 +32,21 @@ fn main() {
         }
     }
 
-    let status = Command::new(real_exe)
-        .args(new_args)
+    let mut child = Command::new(&real_exe);
+    child.args(new_args);
+
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        child.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let status = child
         .status()
-        .expect("Failed to execute real language server binary");
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to execute real language server binary: {}", e);
+            exit(1);
+        });
 
     exit(status.code().unwrap_or(1));
 }

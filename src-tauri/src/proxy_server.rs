@@ -1036,12 +1036,22 @@ pub fn wrap_language_server(app: &tauri::AppHandle, proxy_url: &str) -> Result<S
 
     // Check if the original binary is a real binary (not already a script)
     if !real_path.exists() {
-        // Read first bytes to check if already a script
+        // Read first bytes to check if already a script or our rust wrapper
         let first_bytes = std::fs::read(&server_path)
             .map_err(|e| format!("Cannot read language server: {}", e))?;
+            
+        // Check for bash wrapper
         if first_bytes.starts_with(b"#!/") {
             return Err(
                 "Language server appears to already be wrapped (starts with #!)".into(),
+            );
+        }
+        
+        // Check for rust wrapper signature inside the binary
+        let sig = b"ANTIGRAVITY_RUST_WRAPPER_V1";
+        if first_bytes.windows(sig.len()).any(|w| w == sig) {
+            return Err(
+                "Language server appears to already be securely wrapped (Rust signature detected)".into(),
             );
         }
 
