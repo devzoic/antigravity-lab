@@ -1,160 +1,171 @@
-import { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import Icon from '../components/Icon';
-import { APP_VERSION } from '../components/UpdateBanner';
+import { useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import Icon from "../components/Icon";
+import { APP_VERSION } from "../components/UpdateBanner";
 
 export default function SettingsPage() {
   const { user, hardwareInfo, logout } = useAuth();
-  const [updateStatus, setUpdateStatus] = useState(null); // null | 'checking' | 'downloading' | 'done' | { update object }
+  const [updateStatus, setUpdateStatus] = useState(null);
   const [updateError, setUpdateError] = useState(null);
   const [progress, setProgress] = useState(0);
 
   const checkForUpdates = async () => {
-    setUpdateStatus('checking');
+    setUpdateStatus("checking");
     setUpdateError(null);
     try {
-      const { check } = await import('@tauri-apps/plugin-updater');
+      const { check } = await import("@tauri-apps/plugin-updater");
       const result = await check();
       if (result?.available) {
         setUpdateStatus(result);
       } else {
-        setUpdateStatus('uptodate');
+        setUpdateStatus("uptodate");
       }
     } catch (err) {
-      setUpdateError('Could not check for updates.');
+      setUpdateError("Could not check for updates.");
       setUpdateStatus(null);
     }
   };
 
   const downloadAndInstall = async (update) => {
-    setUpdateStatus('downloading');
+    setUpdateStatus("downloading");
     try {
       let totalBytes = 0;
-      let downloadedBytes = 0;
       await update.downloadAndInstall((event) => {
-        if (event.event === 'Started') {
-          totalBytes = event.data.contentLength || 0;
-        } else if (event.event === 'Progress') {
-          downloadedBytes += event.data.chunkLength;
-          if (totalBytes > 0) {
-            setProgress(Math.round((downloadedBytes / totalBytes) * 100));
-          }
-        } else if (event.event === 'Finished') {
-          setProgress(100);
+        switch (event.event) {
+          case 'Started':
+            totalBytes = event.data.contentLength;
+            break;
+          case 'Progress':
+            if (totalBytes > 0) {
+              setProgress((event.data.chunkLength / totalBytes) * 100);
+            }
+            break;
         }
       });
-      setUpdateStatus('done');
-      // Restart the app
-      const { relaunch } = await import('@tauri-apps/plugin-process');
-      await relaunch();
+      setUpdateStatus("done");
     } catch (err) {
-      setUpdateError('Download failed: ' + err.message);
+      setUpdateError("Failed to update.");
       setUpdateStatus(null);
     }
   };
 
   return (
-    <>
-      <div className="page-header">
-        <h2>Settings</h2>
-        <p>Device information and account details</p>
-      </div>
+    <div className="page settings-page">
+      <header className="page-header">
+        <div>
+          <h1 className="page-title">Settings</h1>
+          <p className="page-subtitle">Configure application settings and view system information.</p>
+        </div>
+      </header>
 
-      {/* About / Version */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-header"><h3><Icon name="zap" size={16} style={{marginRight: 8, opacity: 0.6}} /> About</h3></div>
-        <div className="card-body">
-          <div className="settings-row">
-            <span className="settings-label">App Version</span>
-            <span className="settings-value" style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 15, letterSpacing: 1 }}>v{APP_VERSION}</span>
-          </div>
-          <div className="settings-row" style={{ borderBottom: 'none', paddingBottom: 0 }}>
-            <span className="settings-label">Updates</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {updateStatus === 'checking' ? (
-                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  <span className="spinner" style={{ width: 14, height: 14, marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} />
-                  Checking...
-                </span>
-              ) : updateStatus === 'downloading' ? (
-                <span style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}>
-                  <span className="spinner" style={{ width: 14, height: 14, marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} />
-                  Downloading... {progress > 0 ? `${progress}%` : ''}
-                </span>
-              ) : updateStatus === 'done' ? (
-                <span style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>
-                  ✓ Restarting...
-                </span>
-              ) : updateStatus === 'uptodate' ? (
-                <span style={{ fontSize: 12, color: 'var(--success)', fontWeight: 600 }}>
-                  ✓ You're up to date
-                </span>
-              ) : updateStatus && updateStatus.available ? (
-                <span style={{ fontSize: 12 }}>
-                  <span style={{ color: 'var(--primary)', fontWeight: 700 }}>v{updateStatus.version}</span>
-                  <span style={{ color: 'var(--text-secondary)', margin: '0 4px' }}>available</span>
-                  <button
-                    onClick={() => downloadAndInstall(updateStatus)}
-                    className="btn btn-sm"
-                    style={{ background: 'var(--primary)', color: '#fff', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer', marginLeft: 6 }}
+      <div className="scroll-content">
+        <div style={{ maxWidth: 700, margin: '0 auto' }}>
+          
+          {/* App Updates */}
+          <div className="card settings-update-card">
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3><Icon name="download" size={18} /> App Updates</h3>
+                <p className="card-desc">Check for the latest features and security patches</p>
+              </div>
+              <div className={`status-badge ${updateStatus === 'uptodate' ? 'status-active' : 'status-inactive'}`}>
+                v{APP_VERSION}
+              </div>
+            </div>
+            
+            <div className="card-body">
+              {updateError && <div className="error-text" style={{ marginBottom: 12 }}>{updateError}</div>}
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                {!updateStatus || updateStatus === 'uptodate' || updateStatus === 'checking' ? (
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={checkForUpdates}
+                    disabled={updateStatus === 'checking'}
                   >
-                    <Icon name="download" size={12} /> Install Update
+                    {updateStatus === 'checking' ? 'Checking...' : (updateStatus === 'uptodate' ? 'Up to date' : 'Check for Updates')}
                   </button>
-                </span>
-              ) : null}
-              {updateError && (
-                <span style={{ fontSize: 12, color: 'var(--danger)' }}>{updateError}</span>
-              )}
-              <button
-                onClick={checkForUpdates}
-                className="btn btn-sm"
-                style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-                disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
-              >
-                Check for Updates
-              </button>
+                ) : updateStatus === 'downloading' ? (
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: '0.85rem' }}>
+                      <span>Downloading update...</span>
+                      <span>{Math.round(progress)}%</span>
+                    </div>
+                    <div style={{ width: '100%', height: 6, background: 'var(--bg-elevated)', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ width: `${progress}%`, height: '100%', background: 'var(--color-primary)', transition: 'width 0.2s' }} />
+                    </div>
+                  </div>
+                ) : updateStatus === 'done' ? (
+                  <div style={{ color: 'var(--color-success)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Icon name="check-circle" size={18} /> Update installed. Restart app to apply.
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ marginBottom: 12, fontSize: '0.9rem' }}>
+                      <strong>v{updateStatus.version}</strong> is available!
+                      <p style={{ marginTop: 4, color: 'var(--text-secondary)' }}>{updateStatus.body}</p>
+                    </div>
+                    <button className="btn btn-primary" onClick={() => downloadAndInstall(updateStatus)}>
+                      Download & Install
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Device Info */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-header"><h3><Icon name="monitor" size={16} style={{marginRight: 8, opacity: 0.6}} /> Device Information</h3></div>
-        <div className="card-body">
-          <div className="settings-row">
-            <span className="settings-label">Hardware ID</span>
-            <span className="settings-value">{hardwareInfo?.hardware_id || '—'}</span>
-          </div>
-          <div className="settings-row">
-            <span className="settings-label">Device Name</span>
-            <span className="settings-value">{hardwareInfo?.device_name || '—'}</span>
-          </div>
-          <div className="settings-row">
-            <span className="settings-label">Operating System</span>
-            <span className="settings-value">{hardwareInfo?.os || '—'}</span>
-          </div>
-        </div>
-      </div>
+          <div style={{ display: 'flex', gap: 24, marginTop: 24 }}>
+            {/* System Info */}
+            <div className="card admin-info" style={{ flex: 1.5 }}>
+              <div className="card-header">
+                <h3>System Identity</h3>
+              </div>
+              <div className="card-body">
+                <div className="settings-row">
+                  <span className="settings-label">Hardware ID</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span className="settings-value" style={{ fontFamily: 'monospace' }}>
+                      {hardwareInfo?.hardware_id || "Calculating..."}
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Identifies your machine for security quotas.</span>
+                  </div>
+                </div>
+                <div className="settings-row">
+                  <span className="settings-label">Device Name</span>
+                  <span className="settings-value">{hardwareInfo?.device_name || "—"}</span>
+                </div>
+                <div className="settings-row" style={{ borderBottom: 'none' }}>
+                  <span className="settings-label">OS Platform</span>
+                  <span className="settings-value">{hardwareInfo?.os || "—"}</span>
+                </div>
+              </div>
+            </div>
 
-      {/* Account */}
-      <div className="card">
-        <div className="card-header"><h3><Icon name="user" size={16} style={{marginRight: 8, opacity: 0.6}} /> Account</h3></div>
-        <div className="card-body">
-          <div className="settings-row">
-            <span className="settings-label">Name</span>
-            <span className="settings-value">{user?.name || '—'}</span>
+            {/* Account Info */}
+            <div className="card admin-info" style={{ flex: 1 }}>
+              <div className="card-header">
+                <h3>Account</h3>
+              </div>
+              <div className="card-body">
+                <div className="settings-row">
+                  <span className="settings-label">Name</span>
+                  <span className="settings-value">{user?.name || "—"}</span>
+                </div>
+                <div className="settings-row">
+                  <span className="settings-label">Email</span>
+                  <span className="settings-value">{user?.email || "—"}</span>
+                </div>
+                <div className="settings-row" style={{ borderBottom: "none", paddingBottom: 0, marginTop: 12 }}>
+                  <button className="btn btn-danger" onClick={logout} style={{ width: '100%' }}>
+                    <Icon name="logout" size={16} /> Sign Out
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="settings-row">
-            <span className="settings-label">Email</span>
-            <span className="settings-value">{user?.email || '—'}</span>
-          </div>
-          <div className="settings-row" style={{ borderBottom: 'none', paddingBottom: 0 }}>
-            <span className="settings-label">Session</span>
-            <button className="btn btn-danger btn-sm" onClick={logout}>Sign Out</button>
-          </div>
+
         </div>
       </div>
-    </>
+    </div>
   );
 }

@@ -20,28 +20,30 @@ export default function AccountsPage() {
     setActivating(acc.id); setError(''); setSuccess('');
     try {
       const tokenData = await api.getAccountToken(acc.id, hardwareInfo?.hardware_id);
-      const tokenRequest = {
-        access_token: tokenData.access_token,
-        refresh_token: tokenData.refresh_token || 'proxy-managed',
-        expiry: tokenData.expires_at || Math.floor(Date.now() / 1000) + 3600,
-        email: acc.email,
-      };
+
+      // Use proxy approach: just set the active account on the running proxy
       try {
-        const result = await invoke('switch_and_restart_antigravity', { request: tokenRequest });
+        await invoke('set_active_proxy_account', {
+          accessToken: tokenData.access_token,
+          refreshToken: tokenData.refresh_token || 'proxy-managed',
+          email: acc.email,
+          projectId: null,
+          expiresAt: tokenData.expires_at || Math.floor(Date.now() / 1000) + 3600,
+        });
         setActiveEmail(acc.email);
-        setSuccess(result.success
-          ? `✓ ${acc.email} activated — Antigravity restarted`
-          : `✓ ${acc.email} activated. ${result.message || 'Restart Antigravity manually.'}`);
-      } catch {
-        await invoke('inject_antigravity_token', { request: tokenRequest });
-        setActiveEmail(acc.email);
-        setSuccess(`✓ ${acc.email} token injected — restart Antigravity manually`);
+        setSuccess(`✓ ${acc.email} active — traffic now routing through proxy`);
+      } catch (proxyErr) {
+        throw new Error(proxyErr === "Proxy is not running" 
+          ? "Proxy is not running. Please go to Settings and click 'Connect Proxy' first." 
+          : proxyErr);
       }
     } catch (e) {
       setError(`Failed to activate: ${e.message || e}`);
     }
     setActivating(null);
   }
+
+
 
   async function loadAccounts() {
     try {
@@ -60,29 +62,15 @@ export default function AccountsPage() {
     }
   }, [success, error]);
 
-  async function injectToAntigravity(account) {
-    if (!account?.id || !account?.email) return '⚠ No account to inject';
-    try {
-      const tokenData = await api.getAccountToken(account.id, hardwareInfo?.hardware_id);
-      const result = await invoke('inject_antigravity_token', {
-        request: {
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token || 'proxy-managed',
-          expiry: tokenData.expires_at || Math.floor(Date.now() / 1000) + 3600,
-          email: account.email,
-        }
-      });
-      return result.message;
-    } catch (e) { return `⚠ Injection failed: ${e}`; }
-  }
 
   async function requestAccount() {
     setActionLoading('request'); setError(''); setSuccess('');
     try {
       const data = await api.requestAccount(hardwareInfo?.hardware_id);
       const account = data.account;
-      const injectMsg = await injectToAntigravity(account);
-      setSuccess(`Account assigned: ${account?.email || 'Success'}. ${injectMsg}`);
+      // Activate on proxy
+      await activateAccount(account);
+      setSuccess(`Account assigned: ${account?.email || 'Success'} — routing through proxy`);
       loadAccounts();
     } catch (e) { setError(e.message); }
     setActionLoading('');
@@ -93,26 +81,14 @@ export default function AccountsPage() {
     try {
       const data = await api.switchAccount(accountId, hardwareInfo?.hardware_id);
       const account = data.account;
-      setSuccess(`Switching to ${account?.email}...`);
-      try {
-        const tokenData = await api.getAccountToken(account.id, hardwareInfo?.hardware_id);
-        const result = await invoke('switch_and_restart_antigravity', {
-          request: {
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token || 'proxy-managed',
-            expiry: tokenData.expires_at || Math.floor(Date.now() / 1000) + 3600,
-            email: account.email,
-          }
-        });
-        setSuccess(result.success ? `Switched to ${account?.email} — Antigravity restarted ✓` : `Switched to ${account?.email}. ${result.message}`);
-      } catch {
-        const injectMsg = await injectToAntigravity(account);
-        setSuccess(`Switched to ${account?.email}. ${injectMsg} — Restart Antigravity manually.`);
-      }
+      // Activate on proxy
+      await activateAccount(account);
+      setSuccess(`Switched to ${account?.email} — traffic now routing through proxy`);
       loadAccounts();
     } catch (e) { setError(e.message); }
     setActionLoading('');
   }
+
 
   async function releaseAccount(accountId) {
     setActionLoading('release'); setError(''); setSuccess('');
@@ -201,10 +177,9 @@ export default function AccountsPage() {
                   </div>
                   <div className="ac-identity">
                     <div className="ac-email">{acc.email}</div>
-                    <div className="ac-badges">
-                      <span className={`ac-type-chip ${type}`}>
-                        {type === 'ultra' && <Icon name="star" size={9} color="#fff" />}
-                        {acc.subscription_tier || type}
+                    <div className="acc-card-type">
+                      <span className={`type-chip ${(acc.account_type || 'free').toLowerCase()}`}>
+                        {acc.account_type || 'Free'}
                       </span>
                       <span className={`ac-status-chip ${acc.status}`}>
                         <span className="asc-dot"></span>{acc.status?.replace('_', ' ')}
@@ -267,7 +242,7 @@ export default function AccountsPage() {
                   )}
                 </div>
 
-                {/* ─ Use in Antigravity ─ */}
+                {/* ─ Activate Account ─ */}
                 {acc.status === 'active' && (
                   <div className="ac-activate-section">
                     <button
@@ -278,9 +253,9 @@ export default function AccountsPage() {
                       {activating === acc.id ? (
                         <><div className="ac-btn-spinner" /> Activating...</>
                       ) : activeEmail === acc.email ? (
-                        <><Icon name="check" size={15} /> Active in Antigravity</>
+                        <><Icon name="check" size={15} /> Active — Routing via Proxy</>
                       ) : (
-                        <><Icon name="zap" size={15} /> Use in Antigravity</>
+                        <><Icon name="zap" size={15} /> Route via Proxy</>
                       )}
                     </button>
                   </div>
@@ -290,7 +265,7 @@ export default function AccountsPage() {
                 <div className="ac-footer">
                   <div className="acf-sync">
                     {activeEmail === acc.email ? (
-                      <span className="acf-active-tag"><Icon name="zap" size={10} color="#00d68f" /> Active in AG</span>
+                      <span className="acf-active-tag"><Icon name="zap" size={10} color="#00d68f" /> Active</span>
                     ) : (
                       <>
                         <Icon name="refresh" size={11} color="rgba(255,255,255,0.25)" />

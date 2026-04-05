@@ -1,5 +1,9 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://google.test/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://google.test/api';
 
+// Dynamically use PROD proxy URL when the Tauri app is built for release, otherwise use DEV proxy URL
+export const PROXY_URL = import.meta.env.PROD
+    ? (import.meta.env.VITE_PROXY_URL_PROD || 'https://google.devzoic.com')
+    : (import.meta.env.VITE_PROXY_URL_DEV || 'https://google.test:4433');
 class ApiService {
     constructor() {
         this.token = localStorage.getItem('auth_token') || null;
@@ -58,13 +62,12 @@ class ApiService {
         return this.request('POST', '/accounts/switch', { current_account_id: currentAccountId, hardware_id: hardwareId });
     }
 
-    releaseAccount(accountId) {
-        return this.request('POST', '/accounts/release', { account_id: accountId });
+    activateProxyAccount(accountId, hardwareId) {
+        return this.request('POST', '/accounts/activate-proxy', { account_id: accountId, hardware_id: hardwareId });
     }
 
-    // Token Proxy — get short-lived Google access token
-    getAccountToken(accountId, hardwareId) {
-        return this.request('POST', '/accounts/token', { account_id: accountId, hardware_id: hardwareId });
+    releaseAccount(accountId) {
+        return this.request('POST', '/accounts/release', { account_id: accountId });
     }
 
     // Quota

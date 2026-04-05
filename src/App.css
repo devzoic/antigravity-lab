@@ -752,3 +752,95 @@ body {
   font-size: 13px; color: var(--text-secondary);
   margin: 0 0 20px;
 }
+
+/* ═══════════════════════════════════════════ */
+/* ── Modern Connection Wizard ── */
+/* ═══════════════════════════════════════════ */
+.connection-wizard {
+  padding: 0; overflow: hidden;
+}
+.wizard-header {
+  padding: 24px 32px;
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card-solid);
+}
+.wizard-steps-container {
+  padding: 32px 40px;
+  background: var(--bg-secondary);
+}
+.wizard-row {
+  display: flex; gap: 24px; position: relative;
+}
+.wizard-indicator {
+  display: flex; flex-direction: column; align-items: center; width: 32px;
+}
+.step-circle {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--bg-input); border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 0.9rem; color: var(--text-secondary);
+  z-index: 2; transition: var(--transition);
+}
+.step-line {
+  flex: 1; width: 2px; background: var(--border);
+  margin: 8px 0; min-height: 48px; transition: var(--transition);
+}
+.wizard-row.active .step-circle {
+  background: var(--primary-soft); border-color: var(--primary); color: var(--primary);
+  box-shadow: 0 0 16px var(--primary-glow);
+}
+.wizard-row.completed .step-circle {
+  background: var(--primary); border-color: var(--primary); color: #fff;
+}
+.wizard-row.completed .step-line {
+  background: var(--primary); opacity: 0.5;
+}
+.wizard-row.disabled {
+  opacity: 0.5; pointer-events: none;
+}
+.wizard-row.disabled .wizard-card {
+  filter: grayscale(1);
+}
+.wizard-card {
+  flex: 1; background: var(--bg-card-solid);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  margin-bottom: 32px; overflow: hidden;
+  box-shadow: var(--shadow-sm); transition: var(--transition);
+}
+.wizard-row.active .wizard-card {
+  border-color: rgba(0, 214, 143, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 214, 143, 0.1) inset;
+}
+.wizard-card-header {
+  padding: 20px 24px; border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.015);
+}
+.wizard-icon-box {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.wizard-icon-box.bg-blue { background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.2); }
+.wizard-icon-box.bg-green { background: rgba(0, 214, 143, 0.1); color: var(--primary); border: 1px solid rgba(0, 214, 143, 0.2); }
+
+.wizard-card-header h3 { font-size: 1.05rem; font-weight: 600; margin: 0 0 4px; color: var(--text-primary); }
+.wizard-card-header p { font-size: 0.85rem; color: var(--text-secondary); margin: 0; }
+
+.wizard-card-body { padding: 24px; }
+.wizard-checklist { list-style: none; padding: 0; margin: 0 0 20px; display: flex; flex-direction: column; gap: 12px; }
+.wizard-checklist li { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
+.wizard-checklist li.checked { color: var(--text-primary); }
+.wizard-checklist li.checked svg { color: var(--primary); }
+.wizard-checklist li.pending { color: var(--text-muted); }
+.wizard-checklist li.pending svg { opacity: 0.5; }
+
+.wizard-action-row { display: flex; align-items: center; gap: 16px; }
+.wizard-action-row.mt-16 { margin-top: 16px; }
+.wizard-hint { font-size: 0.8rem; color: var(--text-muted); }
+
+.card-footer-msg {
+  padding: 16px 32px; display: flex; align-items: center; gap: 12px;
+  font-size: 0.9rem; font-weight: 500; border-top: 1px solid var(--border);
+}
+.msg-error { background: rgba(255, 77, 106, 0.05); color: var(--danger); }
+.msg-success { background: rgba(0, 214, 143, 0.05); color: var(--success); }
