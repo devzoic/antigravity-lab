@@ -1019,10 +1019,9 @@ async fn handle_http_proxy(
 
 /// Install the CA certificate into the system trust store
 pub fn install_ca_certificate() -> Result<String, String> {
+    // Generate CA if it doesn't exist
+    let _ = CaManager::load_or_create()?;
     let cert_path = CaManager::cert_path()?;
-    if !cert_path.exists() {
-        return Err("CA certificate not found. Start the proxy first to generate it.".into());
-    }
 
     let cert_path_str = cert_path.to_string_lossy().to_string();
 
