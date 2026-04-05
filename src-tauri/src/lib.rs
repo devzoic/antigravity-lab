@@ -190,37 +190,13 @@ async fn get_proxy_logs(
 }
 
 #[derive(Serialize)]
-struct CaStatus {
-    exists: bool,
-    trusted: bool,
-    path: String,
-}
-
-#[tauri::command]
-fn get_ca_status() -> Result<CaStatus, String> {
-    let cert_path = proxy_server::CaManager::cert_path()?;
-    let exists = cert_path.exists();
-    let trusted = proxy_server::is_ca_trusted().unwrap_or(false);
-    Ok(CaStatus {
-        exists,
-        trusted,
-        path: cert_path.to_string_lossy().to_string(),
-    })
-}
-
-#[tauri::command]
-fn install_ca_cert() -> Result<String, String> {
-    proxy_server::install_ca_certificate()
-}
-
-#[derive(Serialize)]
 struct WrapperStatus {
     wrapped: bool,
 }
 
 #[tauri::command]
-fn wrap_lang_server(proxy_url: String) -> Result<String, String> {
-    proxy_server::wrap_language_server(&proxy_url)
+fn wrap_lang_server(app: tauri::AppHandle, proxy_url: String) -> Result<String, String> {
+    proxy_server::wrap_language_server(&app, &proxy_url)
 }
 
 #[tauri::command]
@@ -348,8 +324,6 @@ pub fn run() {
             set_active_proxy_account,
             set_proxy_version,
             get_proxy_logs,
-            get_ca_status,
-            install_ca_cert,
             inject_session_uuid,
             // Language server wrapper commands
             wrap_lang_server,

@@ -65,53 +65,15 @@ impl std::fmt::Debug for CaManager {
 }
 
 impl CaManager {
-    /// Load or generate a CA certificate
-    pub fn load_or_create() -> Result<Self, String> {
-        let ca_dir = dirs::home_dir()
-            .ok_or("No home dir")?
-            .join(".antigravity-lab");
-        std::fs::create_dir_all(&ca_dir)
-            .map_err(|e| format!("Failed to create CA dir: {}", e))?;
-
-        let cert_path = ca_dir.join("ca.pem");
-        let key_path = ca_dir.join("ca.key");
-
-        if cert_path.exists() && key_path.exists() {
-            // Load existing
-            let key_pem = std::fs::read_to_string(&key_path)
-                .map_err(|e| format!("Read CA key: {}", e))?;
-            let cert_pem = std::fs::read_to_string(&cert_path)
-                .map_err(|e| format!("Read CA cert: {}", e))?;
-
-            let ca_key = KeyPair::from_pem(&key_pem)
-                .map_err(|e| format!("Parse CA key: {}", e))?;
-
-            // Re-create the CA cert by self-signing with the loaded key
-            let mut params = CertificateParams::default();
-            params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-            params
-                .distinguished_name
-                .push(rcgen::DnType::CommonName, "Antigravity Lab CA");
-            params
-                .distinguished_name
-                .push(rcgen::DnType::OrganizationName, "Antigravity Lab");
-            let ca_cert = params
-                .self_signed(&ca_key)
-                .map_err(|e| format!("Self-sign CA: {}", e))?;
-
-            tracing::info!("✓ Loaded existing CA from {:?}", ca_dir);
-            return Ok(Self { ca_cert, ca_key });
-        }
-
-        // Generate new CA
-        let ca_key =
-            KeyPair::generate().map_err(|e| format!("Generate CA key: {}", e))?;
+    /// Generate an ephemeral CA certificate (never hits disk)
+    pub fn create_ephemeral() -> Result<Self, String> {
+        let ca_key = KeyPair::generate().map_err(|e| format!("Generate CA key: {}", e))?;
 
         let mut params = CertificateParams::default();
         params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
         params
             .distinguished_name
-            .push(rcgen::DnType::CommonName, "Antigravity Lab CA");
+            .push(rcgen::DnType::CommonName, "Antigravity Ephemeral CA");
         params
             .distinguished_name
             .push(rcgen::DnType::OrganizationName, "Antigravity Lab");
@@ -120,23 +82,8 @@ impl CaManager {
             .self_signed(&ca_key)
             .map_err(|e| format!("Self-sign CA: {}", e))?;
 
-        // Save to disk
-        std::fs::write(&cert_path, ca_cert.pem())
-            .map_err(|e| format!("Write CA cert: {}", e))?;
-        std::fs::write(&key_path, ca_key.serialize_pem())
-            .map_err(|e| format!("Write CA key: {}", e))?;
-
-        tracing::info!("✓ Generated new CA cert at {:?}", cert_path);
-
+        tracing::info!("✓ Generated new ephemeral CA in memory");
         Ok(Self { ca_cert, ca_key })
-    }
-
-    /// Get the CA cert PEM path
-    pub fn cert_path() -> Result<std::path::PathBuf, String> {
-        let ca_dir = dirs::home_dir()
-            .ok_or("No home dir")?
-            .join(".antigravity-lab");
-        Ok(ca_dir.join("ca.pem"))
     }
 
     /// Generate a TLS server config for a specific domain
@@ -309,7 +256,7 @@ impl ProxyServer {
             .build()
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-        let ca_manager = CaManager::load_or_create()?;
+        let ca_manager = CaManager::create_ephemeral()?;
         let ca_manager = Arc::new(ca_manager);
 
         // Build TLS config with dynamic SNI cert resolver for direct TLS
@@ -1015,130 +962,6 @@ async fn handle_http_proxy(
         .into_response())
 }
 
-// ─── CA Certificate Installation ────────────────────────────────────
-
-/// Install the CA certificate into the system trust store
-pub fn install_ca_certificate() -> Result<String, String> {
-    // Generate CA if it doesn't exist
-    let _ = CaManager::load_or_create()?;
-    let cert_path = CaManager::cert_path()?;
-
-    let cert_path_str = cert_path.to_string_lossy().to_string();
-
-    #[cfg(target_os = "macos")]
-    {
-        let home = std::env::var("HOME").unwrap_or_default();
-        let login_keychain = format!("{}/Library/Keychains/login.keychain-db", home);
-
-        // Try adding to the user's login keychain (no admin required)
-        let output = std::process::Command::new("security")
-            .args(&[
-                "add-trusted-cert",
-                "-r", "trustRoot",
-                "-k", &login_keychain,
-                &cert_path_str,
-            ])
-            .output()
-            .map_err(|e| format!("Failed to run security: {}", e))?;
-
-        if output.status.success() {
-            return Ok("CA certificate installed and trusted in login keychain. Restart Antigravity to apply.".into());
-        }
-
-        // If login keychain failed, try without specifying keychain (user trust domain)
-        let output2 = std::process::Command::new("security")
-            .args(&[
-                "add-trusted-cert",
-                "-r", "trustRoot",
-                &cert_path_str,
-            ])
-            .output()
-            .map_err(|e| format!("Failed to run security: {}", e))?;
-
-        if output2.status.success() {
-            return Ok("CA certificate installed and trusted. Restart Antigravity to apply.".into());
-        }
-
-        // Final fallback: open the cert in Keychain Access for manual trust
-        let _ = std::process::Command::new("open")
-            .arg(&cert_path_str)
-            .spawn();
-
-        let stderr1 = String::from_utf8_lossy(&output.stderr);
-        let stderr2 = String::from_utf8_lossy(&output2.stderr);
-        Err(format!(
-            "Auto-install failed. Keychain Access has been opened — double-click the cert and set trust to 'Always Trust'.\nError 1: {}\nError 2: {}",
-            stderr1.trim(), stderr2.trim()
-        ))
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        let output = std::process::Command::new("certutil")
-            .args(&["-addstore", "Root", &cert_path_str])
-            .output()
-            .map_err(|e| format!("Failed to run certutil: {}", e))?;
-
-        if output.status.success() {
-            Ok("CA certificate installed and trusted.".into())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(format!("Failed to install CA: {}", stderr))
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // Copy to system trust and update
-        let dest = format!("/usr/local/share/ca-certificates/antigravity-lab.crt");
-        let script = format!(
-            "cp '{}' '{}' && update-ca-certificates",
-            cert_path_str, dest
-        );
-        let output = std::process::Command::new("sudo")
-            .args(&["bash", "-c", &script])
-            .output()
-            .map_err(|e| format!("Failed to install CA: {}", e))?;
-
-        if output.status.success() {
-            Ok("CA certificate installed and trusted.".into())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(format!("Failed to install CA: {}", stderr))
-        }
-    }
-}
-
-/// Check if the CA certificate is already trusted
-pub fn is_ca_trusted() -> Result<bool, String> {
-    let cert_path = CaManager::cert_path()?;
-    if !cert_path.exists() {
-        return Ok(false);
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        let output = std::process::Command::new("security")
-            .args(&[
-                "find-certificate",
-                "-a",
-                "-c",
-                "Antigravity Lab",
-                "/Library/Keychains/System.keychain",
-            ])
-            .output()
-            .map_err(|e| format!("Failed to check trust: {}", e))?;
-
-        Ok(output.status.success()
-            && !String::from_utf8_lossy(&output.stdout).is_empty())
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        // On other platforms, assume not trusted if we can't check
-        Ok(false)
-    }
-}
 
 // ─── Language Server Wrapper ────────────────────────────────────────
 // The language_server binary (Go) ignores http.proxy in settings.json
@@ -1178,7 +1001,7 @@ fn language_server_path() -> Result<std::path::PathBuf, String> {
 }
 
 /// Create a wrapper script that forces the language server through the proxy
-pub fn wrap_language_server(proxy_url: &str) -> Result<String, String> {
+pub fn wrap_language_server(app: &tauri::AppHandle, proxy_url: &str) -> Result<String, String> {
     let server_path = language_server_path()?;
     if !server_path.exists() {
         return Err(format!(
@@ -1281,6 +1104,32 @@ exec "$DIR/$(basename "$0").real" "${{ARGS[@]}}"
             dir_perms.set_mode(0o555); // Read-only directory
             std::fs::set_permissions(bin_dir, dir_perms).map_err(|e| e.to_string())?;
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, the bash script won't work, so we use the compiled sidecar.
+        let mut sidecar_path = app
+            .path()
+            .resource_dir()
+            .map(|p| p.join("binaries").join("wrapper-x86_64-pc-windows-msvc.exe"))
+            .map_err(|e| format!("Failed to resolve resource dir: {}", e))?;
+            
+        if !sidecar_path.exists() {
+            sidecar_path = app
+                .path()
+                .resource_dir()
+                .unwrap()
+                .join("binaries")
+                .join("wrapper.exe");
+        }
+        
+        if !sidecar_path.exists() {
+             return Err(format!("Could not find wrapper resource identically on disk: {:?}", sidecar_path));
+        }
+            
+        std::fs::copy(&sidecar_path, &server_path)
+            .map_err(|e| format!("Failed to copy sidecar wrapper to bin: {}", e))?;
     }
 
     tracing::info!(

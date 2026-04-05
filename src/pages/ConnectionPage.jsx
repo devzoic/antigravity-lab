@@ -8,12 +8,10 @@ export default function ConnectionPage() {
   const { user, hardwareInfo } = useAuth();
   
   // Status states
-  const [caStatus, setCaStatus] = useState({ exists: false, trusted: false, path: "" });
   const [wrapperStatus, setWrapperStatus] = useState({ wrapped: false });
   const [isProxyEnabled, setIsProxyEnabled] = useState(false);
   
   // Loading & Message states
-  const [caLoading, setCaLoading] = useState(false);
   const [proxyLoading, setProxyLoading] = useState("");
   const [proxyMsg, setProxyMsg] = useState("");
 
@@ -22,10 +20,7 @@ export default function ConnectionPage() {
       const status = await invoke("get_gemini_sync_status", { proxyUrl: PROXY_URL });
       setIsProxyEnabled(status.is_synced);
     } catch {}
-    try {
-      const ca = await invoke("get_ca_status");
-      setCaStatus(ca);
-    } catch {}
+
     try {
       const ws = await invoke("get_wrapper_status");
       setWrapperStatus(ws);
@@ -35,19 +30,6 @@ export default function ConnectionPage() {
   useEffect(() => {
     refreshStatus();
   }, []);
-
-  const installCa = async () => {
-    setCaLoading(true);
-    setProxyMsg("");
-    try {
-      const msg = await invoke("install_ca_cert");
-      setProxyMsg(`✓ ${msg}`);
-      await refreshStatus();
-    } catch (e) {
-      setProxyMsg(`Setup Error: ${e}`);
-    }
-    setCaLoading(false);
-  };
 
   const connectIDE = async () => {
     setProxyLoading("connect");
@@ -118,7 +100,6 @@ export default function ConnectionPage() {
   };
 
   const isConnected = isProxyEnabled && wrapperStatus.wrapped;
-  const isCaReady = caStatus.exists && caStatus.trusted;
 
   return (
     <div className="page connection-page">
@@ -151,58 +132,9 @@ export default function ConnectionPage() {
 
             <div className="wizard-steps-container">
               {/* Step 1 */}
-              <div className={`wizard-row ${isCaReady ? 'completed' : 'active'}`}>
+              <div className={`wizard-row ${isConnected ? 'completed' : 'active'}`}>
                 <div className="wizard-indicator">
                   <div className="step-circle">1</div>
-                  <div className="step-line"></div>
-                </div>
-                
-                <div className="wizard-card">
-                  <div className="wizard-card-header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div className="wizard-icon-box bg-blue">
-                        <Icon name="shield" size={18} />
-                      </div>
-                      <div>
-                        <h3>Trust Profile</h3>
-                        <p>Install the secure network certificate to allow local interception.</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="wizard-card-body">
-                    <ul className="wizard-checklist">
-                      <li className={caStatus.trusted ? 'checked' : 'pending'}>
-                        <Icon name={caStatus.trusted ? "check" : "minus"} size={14} />
-                        <span>System Keychain Profile injected</span>
-                      </li>
-                      <li className={caStatus.trusted ? 'checked' : 'pending'}>
-                        <Icon name={caStatus.trusted ? "check" : "minus"} size={14} />
-                        <span>Root Certificate locally trusted</span>
-                      </li>
-                    </ul>
-
-                    {!isCaReady && (
-                      <div className="wizard-action-row">
-                        <button 
-                          className="btn btn-primary" 
-                          onClick={installCa} 
-                          disabled={caLoading}
-                        >
-                          <Icon name="download" size={16} />
-                          {caLoading ? "Installing..." : "Install Trust Profile"}
-                        </button>
-                        <span className="wizard-hint">Requires system administrator password.</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Step 2 */}
-              <div className={`wizard-row ${isConnected ? 'completed' : (!isCaReady ? 'disabled' : 'active')}`}>
-                <div className="wizard-indicator">
-                  <div className="step-circle">2</div>
                 </div>
                 
                 <div className="wizard-card">
@@ -231,10 +163,10 @@ export default function ConnectionPage() {
                     </ul>
 
                     <div className="wizard-action-row mt-16">
-                      <button 
+                        <button 
                         className={`btn ${isConnected ? 'btn-secondary' : 'btn-primary'}`}
                         onClick={connectIDE} 
-                        disabled={!isCaReady || proxyLoading !== ""}
+                        disabled={proxyLoading !== ""}
                         style={{ minWidth: 160 }}
                       >
                         <Icon name={isConnected ? "refresh-cw" : "zap"} size={16} />
