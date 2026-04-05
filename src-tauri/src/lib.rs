@@ -246,7 +246,7 @@ async fn kill_antigravity() -> Result<String, String> {
                 #[cfg(target_os = "macos")]
                 { exe_str.contains("antigravity.app/contents/macos") }
                 #[cfg(target_os = "windows")]
-                { exe_str.ends_with("antigravity.exe") }
+                { exe_str.contains("antigravity") && exe_str.ends_with(".exe") }
                 #[cfg(target_os = "linux")]
                 { exe_str.ends_with("/antigravity") }
             };
@@ -285,8 +285,32 @@ async fn restart_antigravity() -> Result<String, String> {
     }
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd")
-            .args(&["/C", "start", "", "Antigravity"])
+        let appdata = std::env::var("LOCALAPPDATA")
+            .map_err(|_| "LOCALAPPDATA not set".to_string())?;
+        let programs = std::path::PathBuf::from(&appdata).join("Programs");
+
+        // Try known folder names for the Antigravity IDE installation
+        let candidates = [
+            ("Antigravity", "Antigravity.exe"),
+            ("Antigravity Lab", "Antigravity Lab.exe"),
+            ("antigravity", "Antigravity.exe"),
+            ("antigravity-lab", "Antigravity Lab.exe"),
+        ];
+
+        let mut exe_path = None;
+        for (folder, exe_name) in &candidates {
+            let p = programs.join(folder).join(exe_name);
+            if p.exists() {
+                exe_path = Some(p);
+                break;
+            }
+        }
+
+        let exe = exe_path.ok_or_else(|| {
+            format!("Could not find Antigravity IDE executable in {}", programs.display())
+        })?;
+
+        std::process::Command::new(&exe)
             .spawn()
             .map_err(|e| format!("Failed to relaunch Antigravity: {}", e))?;
     }

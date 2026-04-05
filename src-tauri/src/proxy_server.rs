@@ -982,8 +982,32 @@ fn language_server_path() -> Result<std::path::PathBuf, String> {
     {
         let appdata = std::env::var("LOCALAPPDATA")
             .map_err(|_| "LOCALAPPDATA not set".to_string())?;
-        let path = std::path::PathBuf::from(appdata)
-            .join("Programs")
+        let programs = std::path::PathBuf::from(&appdata).join("Programs");
+
+        // Try multiple known folder names the NSIS installer could use
+        let candidates = [
+            "Antigravity",
+            "Antigravity Lab",
+            "antigravity",
+            "antigravity-lab",
+        ];
+
+        for name in &candidates {
+            let path = programs
+                .join(name)
+                .join("resources")
+                .join("app")
+                .join("extensions")
+                .join("antigravity")
+                .join("bin")
+                .join("language_server_windows_amd64.exe");
+            if path.exists() {
+                return Ok(path);
+            }
+        }
+
+        // Fallback: return first candidate for a clear error message
+        let path = programs
             .join("Antigravity")
             .join("resources")
             .join("app")
