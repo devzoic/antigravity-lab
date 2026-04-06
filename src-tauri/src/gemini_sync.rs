@@ -23,7 +23,8 @@ fn settings_json_path() -> Result<PathBuf, String> {
 }
 
 /// The proxy keys we manage in settings.json
-const PROXY_KEYS: [&str; 4] = [
+const PROXY_KEYS: [&str; 5] = [
+    "jetski.cloudCodeUrl",
     "geminicodeassist.endpoint",
     "http.proxy",
     "http.proxyStrictSSL",
@@ -106,6 +107,7 @@ pub async fn sync_gemini_config(proxy_url: String) -> Result<String, String> {
     let obj = settings.as_object_mut()
         .ok_or("settings.json is not a JSON object")?;
 
+    obj.insert("jetski.cloudCodeUrl".to_string(), Value::String(proxy_url.clone()));
     obj.insert("geminicodeassist.endpoint".to_string(), Value::String(proxy_url.clone()));
     obj.insert("http.proxyStrictSSL".to_string(), Value::Bool(false));
     obj.insert("http.proxySupport".to_string(), Value::String("override".to_string()));

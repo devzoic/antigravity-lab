@@ -49,16 +49,6 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build Sidecar
-        shell: bash
-        run: |
-          cd src-tauri/wrapper
-          cargo build --release
-          cd ..
-          mkdir -p binaries
-          cp wrapper/target/release/wrapper* binaries/ || true
-          cp wrapper/target/release/wrapper.exe binaries/wrapper-${{ matrix.rust_target }}.exe || true
-          cp wrapper/target/release/wrapper binaries/wrapper-${{ matrix.rust_target }} || true
 
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0

@@ -1,6 +1,0 @@
-[package]
-name = "wrapper"
-version = "1.0.15"
-edition = "2021"
-
-[dependencies]

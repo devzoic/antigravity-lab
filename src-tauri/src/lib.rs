@@ -189,29 +189,6 @@ async fn get_proxy_logs(
     }
 }
 
-#[derive(Serialize)]
-struct WrapperStatus {
-    wrapped: bool,
-}
-
-#[tauri::command]
-fn wrap_lang_server(app: tauri::AppHandle, proxy_url: String) -> Result<String, String> {
-    proxy_server::wrap_language_server(&app, &proxy_url)
-}
-
-#[tauri::command]
-fn unwrap_lang_server() -> Result<String, String> {
-    proxy_server::unwrap_language_server()
-}
-
-#[tauri::command]
-fn get_wrapper_status() -> Result<WrapperStatus, String> {
-    Ok(WrapperStatus {
-        wrapped: proxy_server::is_language_server_wrapped(),
-    })
-}
-
-
 
 /// Wipe OAuth tokens from Antigravity's local database
 #[tauri::command]
@@ -349,10 +326,7 @@ pub fn run() {
             set_proxy_version,
             get_proxy_logs,
             inject_session_uuid,
-            // Language server wrapper commands
-            wrap_lang_server,
-            unwrap_lang_server,
-            get_wrapper_status,
+            // Language server settings commands
             // Settings sync commands
             gemini_sync::sync_gemini_config,
             gemini_sync::restore_gemini_config,

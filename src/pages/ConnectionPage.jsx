@@ -42,15 +42,10 @@ export default function ConnectionPage() {
       } catch {}
       await new Promise(r => setTimeout(r, 2500)); // Wait for full process exit
 
-      // Step 2: Inject settings into Antigravity's settings.json
+      // Step 2: Inject proxy settings into Antigravity's settings.json
+      // (includes jetski.cloudCodeUrl which natively reroutes the language server)
+      setProxyMsg("Configuring IDE settings...");
       await invoke("sync_gemini_config", { proxyUrl: PROXY_URL });
-
-      // Step 3: Wrap the language server binary (safely overwrites previous script because we unlocked the directory)
-      try {
-        await invoke("wrap_lang_server", { proxyUrl: PROXY_URL });
-      } catch (e) {
-        console.warn("Wrapper failed:", e);
-      }
 
       // No token wipe because we keep user's actual token
 
@@ -79,11 +74,9 @@ export default function ConnectionPage() {
       } catch {}
       await new Promise(r => setTimeout(r, 2500));
 
-      // Step 2: Restore settings & unwrap binary
+      // Step 2: Restore original settings (removes jetski.cloudCodeUrl)
+      setProxyMsg("Restoring IDE settings...");
       await invoke("restore_gemini_config");
-      try {
-        await invoke("unwrap_lang_server");
-      } catch (e) {}
 
       // Step 3: Relaunch
       await new Promise(r => setTimeout(r, 500));

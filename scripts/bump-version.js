@@ -25,10 +25,6 @@ const filesToUpdate = [
   {
     path: 'src-tauri/Cargo.toml',
     replace: (content) => content.replace(/version = ".*?"/, `version = "${newVersion}"`)
-  },
-  {
-    path: 'src-tauri/wrapper/Cargo.toml',
-    replace: (content) => content.replace(/version = ".*?"/, `version = "${newVersion}"`)
   }
 ];
 
