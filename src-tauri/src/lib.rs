@@ -52,6 +52,81 @@ fn check_antigravity_db() -> Result<DbStatusResult, String> {
     })
 }
 
+/// Create a combined CA bundle (system CAs + Herd CA) and set SSL_CERT_FILE
+/// so the IDE's Go/gRPC binary trusts the Herd self-signed certificate.
+#[tauri::command]
+fn prepare_ssl_bundle() -> Result<String, String> {
+    let home = dirs::home_dir().ok_or("Failed to get home dir")?;
+    
+    // Herd CA path
+    let herd_ca_path = home.join("Library/Application Support/Herd/config/valet/CA/LaravelValetCASelfSigned.pem");
+    if !herd_ca_path.exists() {
+        return Err("Herd CA not found. Please run 'herd trust' first.".to_string());
+    }
+    
+    // System CA bundle
+    let system_ca = std::path::PathBuf::from("/etc/ssl/cert.pem");
+    if !system_ca.exists() {
+        return Err("System CA bundle not found at /etc/ssl/cert.pem".to_string());
+    }
+    
+    // Create our combined bundle directory
+    let bundle_dir = home.join(".config/antigravity");
+    std::fs::create_dir_all(&bundle_dir)
+        .map_err(|e| format!("Failed to create bundle dir: {}", e))?;
+    
+    let bundle_path = bundle_dir.join("ca-bundle.pem");
+    
+    // Read both and concatenate
+    let system_certs = std::fs::read_to_string(&system_ca)
+        .map_err(|e| format!("Failed to read system CAs: {}", e))?;
+    let herd_ca = std::fs::read_to_string(&herd_ca_path)
+        .map_err(|e| format!("Failed to read Herd CA: {}", e))?;
+    
+    let combined = format!("{}\n{}\n", system_certs, herd_ca);
+    std::fs::write(&bundle_path, &combined)
+        .map_err(|e| format!("Failed to write CA bundle: {}", e))?;
+    
+    // Set SSL_CERT_FILE globally for this process and all children (including launched IDE)
+    let bundle_str = bundle_path.to_string_lossy().to_string();
+    std::env::set_var("SSL_CERT_FILE", &bundle_str);
+    
+    Ok(format!("CA bundle created at {} — SSL_CERT_FILE set", bundle_str))
+}
+
+/// Check if the Antigravity IDE process is currently running
+#[tauri::command]
+fn is_antigravity_running() -> bool {
+    use std::process::Command;
+    
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("pgrep")
+            .args(["-f", "Antigravity.app"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq Antigravity.exe"])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).contains("Antigravity"))
+            .unwrap_or(false)
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        Command::new("pgrep")
+            .args(["-f", "antigravity"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+}
+
 #[derive(Serialize)]
 struct RestartResult {
     success: bool,
@@ -164,6 +239,19 @@ async fn inject_session_uuid(user_id: u64, hwid: String) -> Result<String, Strin
 }
 
 #[tauri::command]
+async fn inject_real_token(access_token: String) -> Result<String, String> {
+    let db_path = antigravity::get_db_path().map_err(|e| e.to_string())?;
+    // Use a proxy-managed refresh string, and a massive expiry year (2035) 
+    // so the IDE's internal Go code never attempts an OAuth refresh cycle natively.
+    // The Tauri React heartbeat will simply keep substituting the access_token in SQLite silently.
+    let fake_refresh = "proxy-managed".to_string();
+    let expiry = 2051222400; // 2035
+    
+    antigravity::inject_token(&db_path, &access_token, &fake_refresh, expiry)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn set_proxy_version(
     version: String,
     handle: tauri::State<'_, ProxyHandle>,
@@ -254,11 +342,27 @@ async fn restart_antigravity() -> Result<String, String> {
     
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("open")
-            .arg("-a")
-            .arg("Antigravity")
-            .spawn()
-            .map_err(|e| format!("Failed to relaunch Antigravity: {}", e))?;
+        // Check if we have a custom CA bundle for proxy TLS
+        let home = dirs::home_dir().ok_or("No home dir")?;
+        let bundle_path = home.join(".config/antigravity/ca-bundle.pem");
+        
+        // Try to find the actual binary inside the .app bundle
+        let app_binary = std::path::PathBuf::from("/Applications/Antigravity.app/Contents/MacOS/Antigravity");
+        
+        if bundle_path.exists() && app_binary.exists() {
+            // Launch directly with SSL_CERT_FILE so Go/gRPC inherits it
+            std::process::Command::new(&app_binary)
+                .env("SSL_CERT_FILE", bundle_path.to_string_lossy().to_string())
+                .spawn()
+                .map_err(|e| format!("Failed to relaunch Antigravity: {}", e))?;
+        } else {
+            // Fallback to standard open command
+            std::process::Command::new("open")
+                .arg("-a")
+                .arg("Antigravity")
+                .spawn()
+                .map_err(|e| format!("Failed to relaunch Antigravity: {}", e))?;
+        }
     }
     #[cfg(target_os = "windows")]
     {
@@ -315,9 +419,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_hardware_id,
             check_antigravity_db,
+            prepare_ssl_bundle,
+            is_antigravity_running,
             wipe_antigravity_tokens,
             kill_antigravity,
             restart_antigravity,
+            inject_real_token,
             // Proxy commands
             start_proxy,
             stop_proxy,

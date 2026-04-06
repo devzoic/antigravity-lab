@@ -44,6 +44,16 @@ export default function SessionGuard({ children }) {
         activeAccountsRef.current = data.active_accounts;
       }
 
+      // Inject the true backend access_token into the local IDE SQLite DB silently to instantly cure unauthorized_client crashes
+      if (data.active_access_token) {
+        try {
+          await invoke('inject_real_token', { accessToken: data.active_access_token });
+          console.log('[SessionGuard] IDE SQLite Vault successfully synchronized with eternal backend token.');
+        } catch (err) {
+          console.warn('[SessionGuard] Failed to inject token into IDE SQLite:', err);
+        }
+      }
+
       // Track tier flag from server
       if (data.allow_refresh_token !== undefined) {
         allowRefreshTokenRef.current = data.allow_refresh_token;

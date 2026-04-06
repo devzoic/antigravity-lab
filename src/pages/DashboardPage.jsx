@@ -20,8 +20,7 @@ export default function DashboardPage({ setPage }) {
   const checkIdeConnection = async () => {
     try {
       const syncStatus = await invoke("get_gemini_sync_status", { proxyUrl: PROXY_URL });
-      const wrapperStatus = await invoke("get_wrapper_status");
-      setIsIdeConnected(syncStatus.is_synced && wrapperStatus.wrapped);
+      setIsIdeConnected(syncStatus.is_synced);
     } catch (e) {
       setIsIdeConnected(false);
     }
@@ -36,6 +35,17 @@ export default function DashboardPage({ setPage }) {
       if (data?.accounts) {
         const activeAcc = data.accounts.find(a => a.is_proxy_active === true);
         if (activeAcc) setActiveEmail(activeAcc.email);
+      }
+
+      // Automatically force inject the real pool access token into the IDE SQLite Database
+      // The IDE natively uses this on its next HTTP request, skipping unauthenticated panics completely
+      if (data?.active_access_token) {
+        try {
+          await invoke('inject_real_token', { accessToken: data.active_access_token });
+          console.log('[Dashboard] IDE Local Token sync successful.');
+        } catch (e) {
+          console.warn('[Dashboard] Token sync failed:', e);
+        }
       }
     } catch (e) {
       setError(e.message);
@@ -93,6 +103,9 @@ export default function DashboardPage({ setPage }) {
       await api.activateProxyAccount(acc.id, hardwareInfo?.hardware_id);
       setActiveEmail(acc.email);
       setActivateMsg(`✓ ${acc.email} active — proxy routing updated`);
+      
+      // Load quota to immediately pull down the new access token and inject it into the IDE
+      await loadQuota();
     } catch (e) {
       setError(`Failed to activate: ${e.message || e}`);
     }
@@ -163,7 +176,7 @@ export default function DashboardPage({ setPage }) {
             </div>
             <div className="dstat-body">
               <span className="dstat-label">Plan Coverage</span>
-              <span className="dstat-value" style={{ fontSize: '1.1rem', fontWeight: 600 }}>{plan?.name}</span>
+              <span className="dstat-value" style={{ fontSize: '1rem', fontWeight: 500, color: 'var(--text-primary)' }}>{plan?.name}</span>
             </div>
           </div>
           
@@ -172,8 +185,8 @@ export default function DashboardPage({ setPage }) {
               <Icon name="key" size={20} color="#00d68f" />
             </div>
             <div className="dstat-body">
-              <span className="dstat-label">Active Deployments</span>
-              <span className="dstat-value" style={{ fontSize: '1.1rem', fontWeight: 600 }}>{accounts.length}<span className="dstat-dim" style={{ fontSize: '0.85em', opacity: 0.6, fontWeight: 400 }}> / {plan?.max_accounts} seats</span></span>
+              <span className="dstat-label">Active Seats</span>
+              <span className="dstat-value" style={{ fontSize: '1rem', fontWeight: 500, color: 'var(--text-primary)' }}>{accounts.length}<span className="dstat-dim" style={{ fontSize: '0.85em', opacity: 0.6, fontWeight: 400 }}> / {plan?.max_accounts} limits</span></span>
             </div>
           </div>
 
@@ -183,7 +196,7 @@ export default function DashboardPage({ setPage }) {
             </div>
             <div className="dstat-body">
               <span className="dstat-label">Network Routing</span>
-              <span className="dstat-value" style={{ fontSize: '1.1rem', fontWeight: 600 }}>Global Edge</span>
+              <span className="dstat-value" style={{ fontSize: '1rem', fontWeight: 500, color: 'var(--text-primary)' }}>Global Edge</span>
             </div>
           </div>
 
@@ -195,40 +208,42 @@ export default function DashboardPage({ setPage }) {
             alignItems: 'center', 
             justifyContent: 'space-between',
             padding: '24px',
-            border: isIdeConnected ? '1px solid rgba(0,214,143,0.15)' : '1px solid var(--border)'
+            border: isIdeConnected ? '1px solid rgba(0,214,143,0.15)' : '1px solid rgba(255,255,255,0.08)',
+            background: isIdeConnected ? 'linear-gradient(to right, rgba(0,214,143,0.03), transparent)' : 'linear-gradient(to right, rgba(255,255,255,0.02), transparent)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
               <div className="dstat-icon" style={{ 
-                background: isIdeConnected ? 'rgba(0,214,143,0.1)' : 'var(--bg-input)',
-                width: 48, height: 48, borderRadius: 12
+                background: isIdeConnected ? 'rgba(0,214,143,0.1)' : 'rgba(255,255,255,0.05)',
+                width: 52, height: 52, borderRadius: 14,
+                boxShadow: isIdeConnected ? '0 0 20px rgba(0,214,143,0.1)' : 'none'
               }}>
-                <Icon name="monitor" size={24} color={isIdeConnected ? '#00d68f' : 'var(--text-primary)'} />
+                <Icon name="monitor" size={24} color={isIdeConnected ? '#00d68f' : 'rgba(255,255,255,0.8)'} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1 }}>Antigravity IDE Bridge</span>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Zero-latency memory mapped caching for generation requests.</span>
+                <span style={{ fontSize: '1rem', fontWeight: 500, color: 'var(--text-primary)' }}>IDE Account Link</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Securely link your IDE to use any of your allotted accounts.</span>
               </div>
             </div>
 
             <div>
               {isIdeConnected ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#00d68f', fontSize: '0.85rem', fontWeight: 600 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#00d68f', boxShadow: '0 0 8px #00d68f' }}></span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#00d68f', fontSize: '0.85rem', fontWeight: 600, letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#00d68f', boxShadow: '0 0 10px #00d68f' }}></span>
                     Secured
                   </div>
-                  <button className="btn" onClick={() => setPage && setPage('connection')} style={{ padding: '6px 16px', fontSize: '0.85rem', background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: '8px' }}>
-                    Configure
+                  <button className="btn" onClick={() => setPage && setPage('connection')} style={{ padding: '8px 20px', fontSize: '0.9rem', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>
+                    Manage Link
                   </button>
                 </div>
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--text-muted)' }}></span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', fontWeight: 600, letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(255,255,255,0.2)' }}></span>
                     Offline
                   </div>
-                  <button className="btn btn-primary" onClick={() => setPage && setPage('connection')} style={{ padding: '6px 16px', fontSize: '0.85rem' }}>
-                    Connect IDE
+                  <button className="btn btn-primary" onClick={() => setPage && setPage('connection')} style={{ padding: '8px 20px', fontSize: '0.9rem', whiteSpace: 'nowrap', borderRadius: '8px', letterSpacing: '-0.1px' }}>
+                    Link IDE Connect
                   </button>
                 </div>
               )}

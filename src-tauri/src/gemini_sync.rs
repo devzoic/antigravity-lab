@@ -137,20 +137,22 @@ pub async fn restore_gemini_config() -> Result<String, String> {
 /// Check if proxy settings are currently active in settings.json
 #[tauri::command]
 pub async fn get_gemini_sync_status(proxy_url: String) -> Result<GeminiSyncStatus, String> {
-    let (path, settings) = read_settings()?;
+    let (_path, settings) = read_settings()?;
 
-    let current_url = settings.get("geminicodeassist.endpoint")
+    // Check the real setting that controls the language server endpoint
+    let current_url = settings.get("jetski.cloudCodeUrl")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let is_synced = current_url.as_deref() == Some(proxy_url.as_str());
-    let strict_ssl_off = settings.get("http.proxyStrictSSL")
-        .and_then(|v| v.as_bool())
-        == Some(false);
+    // The stored URL will be like "https://proxy.devzoic.com/s/3.123.abc"
+    // We check if it starts with the base proxy URL
+    let is_synced = current_url.as_deref()
+        .map(|u| u.starts_with(&proxy_url))
+        .unwrap_or(false);
 
     Ok(GeminiSyncStatus {
-        is_synced: is_synced && strict_ssl_off,
-        has_backup: false, // No longer relevant — no binary backup
+        is_synced,
+        has_backup: false,
         current_url,
     })
 }

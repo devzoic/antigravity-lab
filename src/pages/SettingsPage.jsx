@@ -114,52 +114,24 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 24, marginTop: 24 }}>
-            {/* System Info */}
-            <div className="card admin-info" style={{ flex: 1.5 }}>
-              <div className="card-header">
-                <h3>System Identity</h3>
-              </div>
-              <div className="card-body">
-                <div className="settings-row">
-                  <span className="settings-label">Hardware ID</span>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span className="settings-value" style={{ fontFamily: 'monospace' }}>
-                      {hardwareInfo?.hardware_id || "Calculating..."}
-                    </span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Identifies your machine for security quotas.</span>
-                  </div>
-                </div>
-                <div className="settings-row">
-                  <span className="settings-label">Device Name</span>
-                  <span className="settings-value">{hardwareInfo?.device_name || "—"}</span>
-                </div>
-                <div className="settings-row" style={{ borderBottom: 'none' }}>
-                  <span className="settings-label">OS Platform</span>
-                  <span className="settings-value">{hardwareInfo?.os || "—"}</span>
-                </div>
-              </div>
+          {/* Account Info */}
+          <div className="card admin-info" style={{ marginTop: 24 }}>
+            <div className="card-header">
+              <h3>Account</h3>
             </div>
-
-            {/* Account Info */}
-            <div className="card admin-info" style={{ flex: 1 }}>
-              <div className="card-header">
-                <h3>Account</h3>
+            <div className="card-body">
+              <div className="settings-row">
+                <span className="settings-label">Name</span>
+                <span className="settings-value">{user?.name || "—"}</span>
               </div>
-              <div className="card-body">
-                <div className="settings-row">
-                  <span className="settings-label">Name</span>
-                  <span className="settings-value">{user?.name || "—"}</span>
-                </div>
-                <div className="settings-row">
-                  <span className="settings-label">Email</span>
-                  <span className="settings-value">{user?.email || "—"}</span>
-                </div>
-                <div className="settings-row" style={{ borderBottom: "none", paddingBottom: 0, marginTop: 12 }}>
-                  <button className="btn btn-danger" onClick={logout} style={{ width: '100%' }}>
-                    <Icon name="logout" size={16} /> Sign Out
-                  </button>
-                </div>
+              <div className="settings-row">
+                <span className="settings-label">Email</span>
+                <span className="settings-value">{user?.email || "—"}</span>
+              </div>
+              <div className="settings-row" style={{ borderBottom: "none", paddingBottom: 0, marginTop: 12 }}>
+                <button className="btn btn-danger" onClick={logout} style={{ width: '100%' }}>
+                  <Icon name="logout" size={16} /> Sign Out
+                </button>
               </div>
             </div>
           </div>

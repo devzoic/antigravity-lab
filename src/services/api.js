@@ -66,6 +66,10 @@ class ApiService {
         return this.request('POST', '/accounts/activate-proxy', { account_id: accountId, hardware_id: hardwareId });
     }
 
+    deactivateProxy() {
+        return this.request('POST', '/accounts/deactivate-proxy');
+    }
+
     releaseAccount(accountId) {
         return this.request('POST', '/accounts/release', { account_id: accountId });
     }
@@ -110,6 +114,11 @@ class ApiService {
         if (transactionId) formData.append('transaction_id', transactionId);
         if (proofFile) formData.append('proof_file', proofFile);
         return this.request('POST', '/payments/submit', formData, true);
+    }
+
+    // Proxy route token (signed, tamper-proof user identification)
+    getRouteToken() {
+        return this.request('POST', '/proxy/route-token');
     }
 }
 
