@@ -74,13 +74,9 @@ export default function SessionGuard({ children }) {
   async function refreshTokens() {
     if (!user || !hardwareInfo?.hardware_id) return;
 
-    // Tier 1: Antigravity has the real refresh token, handles its own refresh
-    if (allowRefreshTokenRef.current) {
-      console.log('[SessionGuard] Tier 1 — Antigravity self-refreshes, skipping');
-      return;
-    }
-
-    // Tier 2: Silent injection of fresh access token
+    // Both Tier 1 and Tier 2: fetch a fresh access token from server and inject it.
+    // Even Tier 1 users benefit from this because the server-side cron keeps
+    // the access_token fresh, and we re-inject it to avoid any gap.
     const accounts = activeAccountsRef.current;
     if (!accounts.length) {
       console.log('[SessionGuard] No active accounts to refresh');
@@ -101,7 +97,7 @@ export default function SessionGuard({ children }) {
       // Inject into IDE's SQLite — NO kill, NO restart
       try {
         const injectArgs = { accessToken: freshQuota.active_access_token };
-        // Tier 1: include refresh token
+        // Tier 1: include refresh token so IDE can also self-refresh
         if (allowRefreshTokenRef.current && freshQuota.active_refresh_token) {
           injectArgs.refreshToken = freshQuota.active_refresh_token;
         }
