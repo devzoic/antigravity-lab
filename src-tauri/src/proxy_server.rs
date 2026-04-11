@@ -14,7 +14,7 @@ use rustls::ServerConfig;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::{atomic::{AtomicU64, Ordering}, Arc, Mutex as StdMutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{oneshot, Mutex, RwLock};
 use tokio_rustls::TlsAcceptor;
@@ -26,9 +26,15 @@ const MITM_DOMAINS: [&str; 3] = [
     "cloudaicompanion.googleapis.com",
 ];
 
+/// The canonical Google upstream domain for all forwarded requests
+const UPSTREAM_DOMAIN: &str = "daily-cloudcode-pa.googleapis.com";
+
 fn should_mitm(host: &str) -> bool {
     let h = host.split(':').next().unwrap_or(host);
+    // Also MITM localhost/127.0.0.1 connections (jetski.cloudCodeUrl mode)
     MITM_DOMAINS.iter().any(|d| h == *d)
+        || h == "localhost"
+        || h == "127.0.0.1"
 }
 
 // ─── Active Account State ───────────────────────────────────────────
@@ -84,6 +90,11 @@ impl CaManager {
 
         tracing::info!("✓ Generated new ephemeral CA in memory");
         Ok(Self { ca_cert, ca_key })
+    }
+
+    /// Export the CA certificate as PEM string (for SSL_CERT_FILE bundle)
+    pub fn ca_pem(&self) -> String {
+        self.ca_cert.pem()
     }
 
     /// Generate a TLS server config for a specific domain
@@ -164,7 +175,10 @@ impl rustls::server::ResolvesServerCert for DynamicCertResolver {
         &self,
         client_hello: rustls::server::ClientHello<'_>,
     ) -> Option<Arc<rustls::sign::CertifiedKey>> {
-        let sni = client_hello.server_name()?.to_string();
+        // Use SNI if provided, otherwise fall back to "localhost" (for IP-based connections)
+        let sni = client_hello.server_name()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "localhost".to_string());
         {
             let cache = self.cache.lock().ok()?;
             if let Some(key) = cache.get(&sni) {
@@ -191,6 +205,10 @@ pub struct ProxyState {
     pub ca_manager: Arc<CaManager>,
     pub direct_tls_config: Arc<ServerConfig>,
     pub resolved_ips: Arc<HashMap<String, std::net::SocketAddr>>,
+    /// Atomic request counter for usage tracking (synced to Laravel periodically)
+    pub request_count: Arc<AtomicU64>,
+    /// Last AI model detected in a request (for usage reporting)
+    pub last_model: Arc<RwLock<String>>,
 }
 
 impl ProxyState {
@@ -216,6 +234,26 @@ impl ProxyState {
             let excess = logs.len() - 200;
             logs.drain(..excess);
         }
+    }
+
+    /// Increment request counter and return new value
+    pub fn track_request(&self) {
+        self.request_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Get current request count
+    pub fn get_request_count(&self) -> u64 {
+        self.request_count.load(Ordering::Relaxed)
+    }
+
+    /// Reset request count and return the value before reset
+    pub fn reset_request_count(&self) -> u64 {
+        self.request_count.swap(0, Ordering::Relaxed)
+    }
+
+    /// Get the CA PEM for inclusion in SSL bundles
+    pub fn get_ca_pem(&self) -> String {
+        self.ca_manager.ca_pem()
     }
 }
 
@@ -277,6 +315,8 @@ impl ProxyServer {
             ca_manager,
             direct_tls_config: Arc::new(tls_cfg),
             resolved_ips: Arc::new(resolved_ips),
+            request_count: Arc::new(AtomicU64::new(0)),
+            last_model: Arc::new(RwLock::new(String::new())),
         };
 
         // Axum router only handles non-CONNECT HTTP requests and healthz
@@ -619,7 +659,9 @@ async fn handle_mitm_request_h2(
     let uri = req.uri().clone();
     let path = uri.path_and_query().map(|pq| pq.to_string()).unwrap_or_else(|| uri.path().to_string());
 
-    tracing::info!("🔀 MITM HTTP/2: {} https://{}{}", method, domain, path);
+    // Always forward to Google's canonical domain, regardless of what the client connected to
+    let upstream_domain = UPSTREAM_DOMAIN;
+    tracing::info!("🔀 MITM HTTP/2: {} https://{}{}", method, upstream_domain, path);
 
     let account = state.active_account.read().await.clone();
     let (token, email) = match account {
@@ -635,10 +677,13 @@ async fn handle_mitm_request_h2(
     let version = state.spoofed_version.read().await.clone();
     req.headers_mut().insert(hyper::header::USER_AGENT, format!("antigravity/{} macos/arm64", version).parse().unwrap());
 
+    // Track request for usage metrics
+    state.track_request();
+
     // Resolve upstream using pinned IP (to bypass /etc/hosts loop)
     let upstream_addr = state
         .resolved_ips
-        .get(domain)
+        .get(upstream_domain)
         .copied()
         .unwrap_or_else(|| std::net::SocketAddr::from(([142, 250, 190, 42], 443))); // fallback Google IP
 
@@ -662,7 +707,7 @@ async fn handle_mitm_request_h2(
     config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
     let connector = tokio_rustls::TlsConnector::from(Arc::new(config));
-    let server_name = rustls::pki_types::ServerName::try_from(domain.to_string()).unwrap();
+    let server_name = rustls::pki_types::ServerName::try_from(upstream_domain.to_string()).unwrap();
     let tls_stream = match connector.connect(server_name, tcp_stream).await {
         Ok(s) => s,
         Err(e) => {
@@ -720,7 +765,9 @@ async fn handle_mitm_request(
         .unwrap_or_else(|| uri.path().to_string());
     let original_headers = req.headers().clone();
 
-    tracing::info!("🔀 MITM: {} https://{}{}", method, domain, path);
+    // Always forward to Google's canonical domain
+    let upstream_domain = UPSTREAM_DOMAIN;
+    tracing::info!("🔀 MITM: {} https://{}{}", method, upstream_domain, path);
 
     // Get the active pool account token
     let account = {
@@ -763,8 +810,11 @@ async fn handle_mitm_request(
             }
         };
 
-    // Build upstream URL
-    let upstream_url = format!("https://{}{}", domain, path);
+    // Track request for usage metrics
+    state.track_request();
+
+    // Build upstream URL — always forward to Google's canonical domain
+    let upstream_url = format!("https://{}{}", upstream_domain, path);
 
     // Build the upstream request, forwarding original headers with token swap
     let version = state.spoofed_version.read().await.clone();

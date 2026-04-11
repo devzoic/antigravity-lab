@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Serialize};
 use tauri::{
     Manager, RunEvent,
     menu::{Menu, MenuItem},
@@ -6,12 +6,9 @@ use tauri::{
     WindowEvent,
 };
 use tauri_plugin_autostart::MacosLauncher;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 mod antigravity;
 mod gemini_sync;
-mod proxy_server;
 
 #[derive(Serialize)]
 struct HwidResult {
@@ -52,47 +49,7 @@ fn check_antigravity_db() -> Result<DbStatusResult, String> {
     })
 }
 
-/// Create a combined CA bundle (system CAs + Herd CA) and set SSL_CERT_FILE
-/// so the IDE's Go/gRPC binary trusts the Herd self-signed certificate.
-#[tauri::command]
-fn prepare_ssl_bundle() -> Result<String, String> {
-    let home = dirs::home_dir().ok_or("Failed to get home dir")?;
-    
-    // Herd CA path
-    let herd_ca_path = home.join("Library/Application Support/Herd/config/valet/CA/LaravelValetCASelfSigned.pem");
-    if !herd_ca_path.exists() {
-        return Err("Herd CA not found. Please run 'herd trust' first.".to_string());
-    }
-    
-    // System CA bundle
-    let system_ca = std::path::PathBuf::from("/etc/ssl/cert.pem");
-    if !system_ca.exists() {
-        return Err("System CA bundle not found at /etc/ssl/cert.pem".to_string());
-    }
-    
-    // Create our combined bundle directory
-    let bundle_dir = home.join(".config/antigravity");
-    std::fs::create_dir_all(&bundle_dir)
-        .map_err(|e| format!("Failed to create bundle dir: {}", e))?;
-    
-    let bundle_path = bundle_dir.join("ca-bundle.pem");
-    
-    // Read both and concatenate
-    let system_certs = std::fs::read_to_string(&system_ca)
-        .map_err(|e| format!("Failed to read system CAs: {}", e))?;
-    let herd_ca = std::fs::read_to_string(&herd_ca_path)
-        .map_err(|e| format!("Failed to read Herd CA: {}", e))?;
-    
-    let combined = format!("{}\n{}\n", system_certs, herd_ca);
-    std::fs::write(&bundle_path, &combined)
-        .map_err(|e| format!("Failed to write CA bundle: {}", e))?;
-    
-    // Set SSL_CERT_FILE globally for this process and all children (including launched IDE)
-    let bundle_str = bundle_path.to_string_lossy().to_string();
-    std::env::set_var("SSL_CERT_FILE", &bundle_str);
-    
-    Ok(format!("CA bundle created at {} — SSL_CERT_FILE set", bundle_str))
-}
+
 
 /// Check if the Antigravity IDE process is currently running
 #[tauri::command]
@@ -127,154 +84,16 @@ fn is_antigravity_running() -> bool {
     }
 }
 
-#[derive(Serialize)]
-struct RestartResult {
-    success: bool,
-    message: String,
-}
-
-// ─── Proxy Server Commands ────────────────────────────────────────
-
-struct ProxyHandle(Mutex<Option<proxy_server::ProxyServer>>);
-struct ProxyStateHandle(Arc<tokio::sync::RwLock<Option<proxy_server::ActiveAccount>>>);
-
-#[derive(Serialize)]
-struct ProxyStatus {
-    running: bool,
-    port: u16,
-    active_email: Option<String>,
-}
-
 #[tauri::command]
-async fn start_proxy(
-    port: u16,
-    handle: tauri::State<'_, ProxyHandle>,
-    state_handle: tauri::State<'_, ProxyStateHandle>,
-) -> Result<String, String> {
-    let mut guard = handle.0.lock().await;
-    if guard.is_some() {
-        return Ok("Proxy already running".to_string());
-    }
-
-    let (server, _join) = proxy_server::ProxyServer::start(port).await?;
-
-    // Share the active account state
-    {
-        let mut shared = state_handle.0.write().await;
-        *shared = server.state.active_account.read().await.clone();
-    }
-
-    *guard = Some(server);
-    Ok(format!("MITM Proxy started on port {}", port))
-}
-
-#[tauri::command]
-async fn stop_proxy(handle: tauri::State<'_, ProxyHandle>) -> Result<String, String> {
-    let mut guard = handle.0.lock().await;
-    if let Some(server) = guard.take() {
-        server.stop();
-        Ok("Proxy stopped".to_string())
-    } else {
-        Ok("Proxy was not running".to_string())
-    }
-}
-
-#[tauri::command]
-async fn get_proxy_status(
-    handle: tauri::State<'_, ProxyHandle>,
-) -> Result<ProxyStatus, String> {
-    let guard = handle.0.lock().await;
-    match guard.as_ref() {
-        Some(server) => {
-            let acc = server.state.active_account.read().await;
-            Ok(ProxyStatus {
-                running: true,
-                port: 4000,
-                active_email: acc.as_ref().map(|a| a.email.clone()),
-            })
-        }
-        None => Ok(ProxyStatus {
-            running: false,
-            port: 4000,
-            active_email: None,
-        }),
-    }
-}
-
-#[tauri::command]
-async fn set_active_proxy_account(
-    access_token: String,
-    refresh_token: String,
-    email: String,
-    project_id: Option<String>,
-    expires_at: Option<i64>,
-    handle: tauri::State<'_, ProxyHandle>,
-) -> Result<String, String> {
-    let guard = handle.0.lock().await;
-    let server = guard.as_ref().ok_or("Proxy is not running")?;
-
-    let account = proxy_server::ActiveAccount {
-        access_token,
-        refresh_token,
-        email: email.clone(),
-        project_id: project_id.unwrap_or_else(|| "bamboo-precept-lgxtn".to_string()),
-        expires_at: expires_at.unwrap_or_else(|| chrono::Utc::now().timestamp() + 3600),
-    };
-
-    let mut acc_guard = server.state.active_account.write().await;
-    *acc_guard = Some(account);
-
-    Ok(format!("Active proxy account set to: {}", email))
-}
-
-#[tauri::command]
-async fn inject_session_uuid(user_id: u64, hwid: String) -> Result<String, String> {
+async fn inject_real_token(access_token: String, refresh_token: Option<String>) -> Result<String, String> {
     let db_path = antigravity::get_db_path().map_err(|e| e.to_string())?;
-    let fake_access_token = format!("ya29.USER-{}-HWID-{}", user_id, hwid);
-    let fake_refresh = "proxy-managed".to_string();
+    // Tier 1 users get the real refresh token so the IDE can self-refresh.
+    // Tier 2 users get "proxy-managed" — the Tauri heartbeat handles refresh.
+    let refresh = refresh_token.unwrap_or_else(|| "proxy-managed".to_string());
     let expiry = 2051222400; // 2035
     
-    antigravity::inject_token(&db_path, &fake_access_token, &fake_refresh, expiry)
+    antigravity::inject_token(&db_path, &access_token, &refresh, expiry)
         .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn inject_real_token(access_token: String) -> Result<String, String> {
-    let db_path = antigravity::get_db_path().map_err(|e| e.to_string())?;
-    // Use a proxy-managed refresh string, and a massive expiry year (2035) 
-    // so the IDE's internal Go code never attempts an OAuth refresh cycle natively.
-    // The Tauri React heartbeat will simply keep substituting the access_token in SQLite silently.
-    let fake_refresh = "proxy-managed".to_string();
-    let expiry = 2051222400; // 2035
-    
-    antigravity::inject_token(&db_path, &access_token, &fake_refresh, expiry)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn set_proxy_version(
-    version: String,
-    handle: tauri::State<'_, ProxyHandle>,
-) -> Result<String, String> {
-    let guard = handle.0.lock().await;
-    let server = guard.as_ref().ok_or("Proxy is not running")?;
-    let mut v = server.state.spoofed_version.write().await;
-    *v = version.clone();
-    Ok(format!("Proxy User-Agent set to: antigravity/{}", version))
-}
-
-#[tauri::command]
-async fn get_proxy_logs(
-    handle: tauri::State<'_, ProxyHandle>,
-) -> Result<Vec<proxy_server::ProxyLogEntry>, String> {
-    let guard = handle.0.lock().await;
-    match guard.as_ref() {
-        Some(server) => {
-            let logs = server.state.logs.lock().await;
-            Ok(logs.clone())
-        }
-        None => Ok(vec![]),
-    }
 }
 
 
@@ -333,7 +152,7 @@ async fn kill_antigravity() -> Result<String, String> {
     Ok(format!("Killed {} Antigravity processes", killed))
 }
 
-/// Kill and relaunch Antigravity so it reads updated config
+/// Kill and relaunch Antigravity so it reads the freshly injected token.
 #[tauri::command]
 async fn restart_antigravity() -> Result<String, String> {
     let kill_result = kill_antigravity().await?;
@@ -342,27 +161,12 @@ async fn restart_antigravity() -> Result<String, String> {
     
     #[cfg(target_os = "macos")]
     {
-        // Check if we have a custom CA bundle for proxy TLS
-        let home = dirs::home_dir().ok_or("No home dir")?;
-        let bundle_path = home.join(".config/antigravity/ca-bundle.pem");
-        
-        // Try to find the actual binary inside the .app bundle
-        let app_binary = std::path::PathBuf::from("/Applications/Antigravity.app/Contents/MacOS/Antigravity");
-        
-        if bundle_path.exists() && app_binary.exists() {
-            // Launch directly with SSL_CERT_FILE so Go/gRPC inherits it
-            std::process::Command::new(&app_binary)
-                .env("SSL_CERT_FILE", bundle_path.to_string_lossy().to_string())
-                .spawn()
-                .map_err(|e| format!("Failed to relaunch Antigravity: {}", e))?;
-        } else {
-            // Fallback to standard open command
-            std::process::Command::new("open")
-                .arg("-a")
-                .arg("Antigravity")
-                .spawn()
-                .map_err(|e| format!("Failed to relaunch Antigravity: {}", e))?;
-        }
+        // Standard macOS app launch — clean, no custom env vars
+        std::process::Command::new("open")
+            .arg("-a")
+            .arg("Antigravity")
+            .spawn()
+            .map_err(|e| format!("Failed to relaunch Antigravity: {}", e))?;
     }
     #[cfg(target_os = "windows")]
     {
@@ -370,7 +174,6 @@ async fn restart_antigravity() -> Result<String, String> {
             .map_err(|_| "LOCALAPPDATA not set".to_string())?;
         let programs = std::path::PathBuf::from(&appdata).join("Programs");
 
-        // Try known folder names for the Antigravity IDE installation
         let candidates = [
             ("Antigravity", "Antigravity.exe"),
             ("Antigravity Lab", "Antigravity Lab.exe"),
@@ -414,30 +217,16 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
-        .manage(ProxyHandle(Mutex::new(None)))
-        .manage(ProxyStateHandle(Arc::new(tokio::sync::RwLock::new(None))))
         .invoke_handler(tauri::generate_handler![
             get_hardware_id,
             check_antigravity_db,
-            prepare_ssl_bundle,
             is_antigravity_running,
             wipe_antigravity_tokens,
             kill_antigravity,
             restart_antigravity,
             inject_real_token,
-            // Proxy commands
-            start_proxy,
-            stop_proxy,
-            get_proxy_status,
-            set_active_proxy_account,
-            set_proxy_version,
-            get_proxy_logs,
-            inject_session_uuid,
-            // Language server settings commands
-            // Settings sync commands
-            gemini_sync::sync_gemini_config,
+            // Settings sync
             gemini_sync::restore_gemini_config,
-            gemini_sync::get_gemini_sync_status,
         ])
         .setup(|app| {
             // ── System Tray Menu ──

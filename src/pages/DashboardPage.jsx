@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api, PROXY_URL } from '../services/api';
+import { api } from '../services/api';
 import Icon from '../components/Icon';
 import { useAuth } from '../context/AuthContext';
 import { invoke } from '@tauri-apps/api/core';
@@ -15,16 +15,6 @@ export default function DashboardPage({ setPage }) {
   const [actionLoading, setActionLoading] = useState('');
   const [refreshingId, setRefreshingId] = useState(null);
   const [success, setSuccess] = useState('');
-  const [isIdeConnected, setIsIdeConnected] = useState(false);
-
-  const checkIdeConnection = async () => {
-    try {
-      const syncStatus = await invoke("get_gemini_sync_status", { proxyUrl: PROXY_URL });
-      setIsIdeConnected(syncStatus.is_synced);
-    } catch (e) {
-      setIsIdeConnected(false);
-    }
-  };
 
   async function loadQuota() {
     try {
@@ -37,12 +27,11 @@ export default function DashboardPage({ setPage }) {
         if (activeAcc) setActiveEmail(activeAcc.email);
       }
 
-      // Automatically force inject the real pool access token into the IDE SQLite Database
-      // The IDE natively uses this on its next HTTP request, skipping unauthenticated panics completely
+      // Silently sync the active token into IDE's SQLite (no restart needed)
       if (data?.active_access_token) {
         try {
           await invoke('inject_real_token', { accessToken: data.active_access_token });
-          console.log('[Dashboard] IDE Local Token sync successful.');
+          console.log('[Dashboard] Token synced to IDE.');
         } catch (e) {
           console.warn('[Dashboard] Token sync failed:', e);
         }
@@ -53,10 +42,7 @@ export default function DashboardPage({ setPage }) {
     setLoading(false);
   }
 
-  useEffect(() => { 
-    loadQuota(); 
-    checkIdeConnection();
-  }, []);
+  useEffect(() => { loadQuota(); }, []);
 
   useEffect(() => {
     if (success || error || activateMsg) {
@@ -99,13 +85,32 @@ export default function DashboardPage({ setPage }) {
     if (!acc?.id || !acc?.email) return;
     setActivating(acc.id); setActivateMsg(''); setError('');
     try {
-      // Just hit the Laravel API to update the active account flag
+      // 1. Tell Laravel to set this account as active
       await api.activateProxyAccount(acc.id, hardwareInfo?.hardware_id);
       setActiveEmail(acc.email);
-      setActivateMsg(`✓ ${acc.email} active — proxy routing updated`);
       
-      // Load quota to immediately pull down the new access token and inject it into the IDE
-      await loadQuota();
+      // 2. Get the fresh access token
+      const freshQuota = await api.getCurrentQuota();
+      
+      if (freshQuota?.active_access_token) {
+        // 3. Remove any leftover proxy settings
+        try { await invoke('restore_gemini_config'); } catch (e) { /* ok */ }
+        
+        // 4. Inject token into IDE's SQLite database
+        try {
+          await invoke('inject_real_token', { accessToken: freshQuota.active_access_token });
+          
+          // 5. Auto-restart IDE to pick up the new token
+          await invoke('restart_antigravity');
+          setActivateMsg(`✓ ${acc.email} activated — Antigravity restarted`);
+        } catch (e) {
+          setActivateMsg(`✓ ${acc.email} activated — restart Antigravity manually`);
+        }
+      } else {
+        setError(`${acc.email} has no valid token. Refresh quota first.`);
+      }
+      
+      setQuota(freshQuota);
     } catch (e) {
       setError(`Failed to activate: ${e.message || e}`);
     }
@@ -190,65 +195,7 @@ export default function DashboardPage({ setPage }) {
             </div>
           </div>
 
-          <div className="dash-stat-card" style={{ height: '100%' }}>
-            <div className="dstat-icon" style={{ background: 'rgba(255, 176, 32, 0.1)' }}>
-              <Icon name="globe" size={20} color="#ffb020" />
-            </div>
-            <div className="dstat-body">
-              <span className="dstat-label">Network Routing</span>
-              <span className="dstat-value" style={{ fontSize: '1rem', fontWeight: 500, color: 'var(--text-primary)' }}>Global Edge</span>
-            </div>
-          </div>
 
-          {/* ── IDE Setup Banner (Grid Spanning) ── */}
-          <div className="dash-stat-card" style={{ 
-            gridColumn: '1 / -1', 
-            display: 'flex', 
-            flexDirection: 'row', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
-            padding: '24px',
-            border: isIdeConnected ? '1px solid rgba(0,214,143,0.15)' : '1px solid rgba(255,255,255,0.08)',
-            background: isIdeConnected ? 'linear-gradient(to right, rgba(0,214,143,0.03), transparent)' : 'linear-gradient(to right, rgba(255,255,255,0.02), transparent)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-              <div className="dstat-icon" style={{ 
-                background: isIdeConnected ? 'rgba(0,214,143,0.1)' : 'rgba(255,255,255,0.05)',
-                width: 52, height: 52, borderRadius: 14,
-                boxShadow: isIdeConnected ? '0 0 20px rgba(0,214,143,0.1)' : 'none'
-              }}>
-                <Icon name="monitor" size={24} color={isIdeConnected ? '#00d68f' : 'rgba(255,255,255,0.8)'} />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: '1rem', fontWeight: 500, color: 'var(--text-primary)' }}>IDE Account Link</span>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Securely link your IDE to use any of your allotted accounts.</span>
-              </div>
-            </div>
-
-            <div>
-              {isIdeConnected ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#00d68f', fontSize: '0.85rem', fontWeight: 600, letterSpacing: '0.3px', textTransform: 'uppercase' }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#00d68f', boxShadow: '0 0 10px #00d68f' }}></span>
-                    Secured
-                  </div>
-                  <button className="btn" onClick={() => setPage && setPage('connection')} style={{ padding: '8px 20px', fontSize: '0.9rem', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>
-                    Manage Link
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem', fontWeight: 600, letterSpacing: '0.3px', textTransform: 'uppercase' }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(255,255,255,0.2)' }}></span>
-                    Offline
-                  </div>
-                  <button className="btn btn-primary" onClick={() => setPage && setPage('connection')} style={{ padding: '8px 20px', fontSize: '0.9rem', whiteSpace: 'nowrap', borderRadius: '8px', letterSpacing: '-0.1px' }}>
-                    Link IDE Connect
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       )}
 
@@ -260,10 +207,41 @@ export default function DashboardPage({ setPage }) {
               <h3>AI Accounts</h3>
               <span className="section-count">{accounts.length}</span>
             </div>
-            {activateMsg && <span style={{ color: '#00d68f', fontSize: 12, fontWeight: 600, marginRight: 12 }}>{activateMsg}</span>}
-            {success && <span style={{ color: '#00d68f', fontSize: 12, fontWeight: 600, marginRight: 12 }}>{success}</span>}
-            {error && <span style={{ color: '#ff4d6a', fontSize: 12, fontWeight: 600, marginRight: 12 }}>{error}</span>}
-            <span className="section-live"><span className="live-dot"></span> Live</span>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              {activateMsg && <span style={{ color: '#00d68f', fontSize: 12, fontWeight: 600 }}>{activateMsg}</span>}
+              {success && <span style={{ color: '#00d68f', fontSize: 12, fontWeight: 600 }}>{success}</span>}
+              {error && <span style={{ color: '#ff4d6a', fontSize: 12, fontWeight: 600 }}>{error}</span>}
+              
+              <button 
+                onClick={() => {
+                  setActionLoading('refreshAll');
+                  loadQuota().then(() => setActionLoading(''));
+                }}
+                disabled={actionLoading === 'refreshAll'}
+                className="btn" 
+                style={{ 
+                  background: 'transparent', 
+                  border: '1px solid rgba(255,255,255,0.1)', 
+                  color: 'rgba(255,255,255,0.7)', 
+                  padding: '6px 12px', 
+                  fontSize: 12, 
+                  borderRadius: 6, 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 6,
+                  cursor: actionLoading === 'refreshAll' ? 'progress' : 'pointer',
+                  opacity: actionLoading === 'refreshAll' ? 0.7 : 1
+                }}
+              >
+                <div style={{ transform: actionLoading === 'refreshAll' ? 'rotate(180deg)' : 'none', transition: 'transform 0.5s ease', display: 'flex' }}>
+                  <Icon name="refresh" size={14} />
+                </div>
+                {actionLoading === 'refreshAll' ? 'Refreshing...' : 'Refresh Stats'}
+              </button>
+              
+              <span className="section-live"><span className="live-dot"></span> Live</span>
+            </div>
           </div>
 
           <div className="dash-account-grid">

@@ -99,23 +99,6 @@ fn write_settings(path: &PathBuf, settings: &Value) -> Result<(), String> {
     Ok(())
 }
 
-/// Inject proxy settings into Antigravity's settings.json
-#[tauri::command]
-pub async fn sync_gemini_config(proxy_url: String) -> Result<String, String> {
-    let (path, mut settings) = read_settings()?;
-
-    let obj = settings.as_object_mut()
-        .ok_or("settings.json is not a JSON object")?;
-
-    obj.insert("jetski.cloudCodeUrl".to_string(), Value::String(proxy_url.clone()));
-    obj.insert("geminicodeassist.endpoint".to_string(), Value::String(proxy_url.clone()));
-    obj.insert("http.proxyStrictSSL".to_string(), Value::Bool(false));
-    obj.insert("http.proxySupport".to_string(), Value::String("override".to_string()));
-
-    write_settings(&path, &settings)?;
-
-    Ok(format!("Proxy settings injected → {} — restart Antigravity to apply", proxy_url))
-}
 
 /// Remove proxy settings from Antigravity's settings.json
 #[tauri::command]
@@ -134,32 +117,3 @@ pub async fn restore_gemini_config() -> Result<String, String> {
     Ok("Proxy settings removed — restart Antigravity to apply".to_string())
 }
 
-/// Check if proxy settings are currently active in settings.json
-#[tauri::command]
-pub async fn get_gemini_sync_status(proxy_url: String) -> Result<GeminiSyncStatus, String> {
-    let (_path, settings) = read_settings()?;
-
-    // Check the real setting that controls the language server endpoint
-    let current_url = settings.get("jetski.cloudCodeUrl")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-
-    // The stored URL will be like "https://proxy.devzoic.com/s/3.123.abc"
-    // We check if it starts with the base proxy URL
-    let is_synced = current_url.as_deref()
-        .map(|u| u.starts_with(&proxy_url))
-        .unwrap_or(false);
-
-    Ok(GeminiSyncStatus {
-        is_synced,
-        has_backup: false,
-        current_url,
-    })
-}
-
-#[derive(serde::Serialize)]
-pub struct GeminiSyncStatus {
-    pub is_synced: bool,
-    pub has_backup: bool,
-    pub current_url: Option<String>,
-}

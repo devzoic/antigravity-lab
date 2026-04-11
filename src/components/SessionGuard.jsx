@@ -5,6 +5,7 @@ import Icon from './Icon';
 import { invoke } from '@tauri-apps/api/core';
 
 const HEARTBEAT_INTERVAL = 5 * 60 * 1000;     // 5 minutes — security check
+const TOKEN_REFRESH_INTERVAL = 50 * 60 * 1000; // 50 minutes — refresh before 60m expiry
 
 const REASON_MESSAGES = {
   subscription_expired: 'Your subscription has expired.',
@@ -17,14 +18,14 @@ export default function SessionGuard({ children }) {
   const { user, hardwareInfo } = useAuth();
   const [revoked, setRevoked] = useState(false);
   const [revokeReason, setRevokeReason] = useState('');
-  const [refreshStatus, setRefreshStatus] = useState(''); // '' | 'refreshing'
+  const [refreshStatus, setRefreshStatus] = useState('');
   const heartbeatRef = useRef(null);
   const tokenRefreshRef = useRef(null);
-  const activeAccountsRef = useRef([]); // Track accounts from heartbeat
-  const allowRefreshTokenRef = useRef(false); // Tier flag from server
+  const activeAccountsRef = useRef([]);
+  const allowRefreshTokenRef = useRef(false);
 
-  // Refs for stable interval callbacks (fixes stale closure bug)
   const checkHeartbeatRef = useRef(null);
+  const refreshTokensRef = useRef(null);
 
   // ─── Security Heartbeat (every 5 min) ──────────────────────────
   async function checkHeartbeat() {
@@ -39,51 +40,111 @@ export default function SessionGuard({ children }) {
         return;
       }
 
-      // Only overwrite accounts if we got real data (protects against bad heartbeats)
+      // Only overwrite accounts if we got real data
       if (data.active_accounts?.length) {
         activeAccountsRef.current = data.active_accounts;
       }
 
-      // Inject the true backend access_token into the local IDE SQLite DB silently to instantly cure unauthorized_client crashes
+      // Silently inject token into IDE's SQLite on every heartbeat
       if (data.active_access_token) {
         try {
-          await invoke('inject_real_token', { accessToken: data.active_access_token });
-          console.log('[SessionGuard] IDE SQLite Vault successfully synchronized with eternal backend token.');
+          const injectArgs = { accessToken: data.active_access_token };
+          // Tier 1: also inject real refresh token so IDE can self-refresh
+          if (data.allow_refresh_token && data.active_refresh_token) {
+            injectArgs.refreshToken = data.active_refresh_token;
+          }
+          await invoke('inject_real_token', injectArgs);
+          console.log('[SessionGuard] Token silently injected into IDE ✓');
         } catch (err) {
-          console.warn('[SessionGuard] Failed to inject token into IDE SQLite:', err);
+          console.warn('[SessionGuard] Failed to inject token:', err);
         }
       }
 
-      // Track tier flag from server
       if (data.allow_refresh_token !== undefined) {
         allowRefreshTokenRef.current = data.allow_refresh_token;
       }
     } catch (e) {
-      // Network error — don't wipe, don't overwrite accounts, just skip
       console.warn('[SessionGuard] Heartbeat failed:', e.message);
     }
   }
 
-  // ─── Token Auto-Refresh Removed (Handled by Proxy Architecture) ───
+  // ─── Token Auto-Refresh (every 50 min) ─────────────────────────
+  // Silently fetch fresh token from server and inject into IDE's SQLite DB.
+  // No IDE restart needed — the IDE picks up the new token on its next API call.
+  async function refreshTokens() {
+    if (!user || !hardwareInfo?.hardware_id) return;
+
+    // Tier 1: Antigravity has the real refresh token, handles its own refresh
+    if (allowRefreshTokenRef.current) {
+      console.log('[SessionGuard] Tier 1 — Antigravity self-refreshes, skipping');
+      return;
+    }
+
+    // Tier 2: Silent injection of fresh access token
+    const accounts = activeAccountsRef.current;
+    if (!accounts.length) {
+      console.log('[SessionGuard] No active accounts to refresh');
+      return;
+    }
+
+    console.log(`[SessionGuard] Refreshing token for ${accounts[0]?.email}...`);
+
+    try {
+      // Get fresh quota (which includes the fresh access_token)
+      const freshQuota = await api.getCurrentQuota();
+
+      if (!freshQuota?.active_access_token) {
+        console.warn('[SessionGuard] No token received from server');
+        return;
+      }
+
+      // Inject into IDE's SQLite — NO kill, NO restart
+      try {
+        const injectArgs = { accessToken: freshQuota.active_access_token };
+        // Tier 1: include refresh token
+        if (allowRefreshTokenRef.current && freshQuota.active_refresh_token) {
+          injectArgs.refreshToken = freshQuota.active_refresh_token;
+        }
+        await invoke('inject_real_token', injectArgs);
+        console.log('[SessionGuard] Token silently refreshed ✓');
+      } catch (e) {
+        console.error('[SessionGuard] Silent injection failed:', e);
+        // Retry once after 3 seconds (DB might be briefly locked)
+        setTimeout(async () => {
+          try {
+            await invoke('inject_real_token', { accessToken: freshQuota.active_access_token });
+            console.log('[SessionGuard] Token injected on retry ✓');
+          } catch (e2) {
+            console.error('[SessionGuard] Retry also failed:', e2);
+          }
+        }, 3000);
+      }
+    } catch (e) {
+      console.warn('[SessionGuard] Token refresh error:', e.message);
+      if (e.message?.includes('No active subscription') || e.message?.includes('not assigned')) {
+        await checkHeartbeat();
+      }
+    }
+  }
+
+  // ─── Revoke & Wipe ────────────────────────────────────────────
   async function revokeSession(reasons) {
-    // 1. Kill Antigravity
     try { await invoke('kill_antigravity'); } catch (e) { /* ok */ }
     await new Promise(r => setTimeout(r, 1500));
 
-    // 2. Wipe tokens
-    // We intentionally DO NOT wipe IDE tokens anymore, to preserve user's personal auth
-
-    // 3. Show lock screen
     const reason = (reasons || []).map(r => REASON_MESSAGES[r] || r).join(' ');
     setRevokeReason(reason || 'Session invalidated by server.');
     setRevoked(true);
 
-    // Stop all polling
     if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+    if (tokenRefreshRef.current) clearInterval(tokenRefreshRef.current);
   }
 
   // ─── Keep refs pointing to latest function versions ────────────
-  useEffect(() => { checkHeartbeatRef.current = checkHeartbeat; });
+  useEffect(() => {
+    checkHeartbeatRef.current = checkHeartbeat;
+    refreshTokensRef.current = refreshTokens;
+  });
 
   // ─── Start Timers ──────────────────────────────────────────────
   useEffect(() => {
@@ -92,14 +153,18 @@ export default function SessionGuard({ children }) {
     // Initial heartbeat after 10 seconds
     const initTimeout = setTimeout(() => {
       checkHeartbeatRef.current?.();
+      refreshTokensRef.current?.();
 
       // Security heartbeat: every 5 minutes
       heartbeatRef.current = setInterval(() => checkHeartbeatRef.current?.(), HEARTBEAT_INTERVAL);
+      // Token refresh: every 50 minutes
+      tokenRefreshRef.current = setInterval(() => refreshTokensRef.current?.(), TOKEN_REFRESH_INTERVAL);
     }, 10000);
 
     return () => {
       clearTimeout(initTimeout);
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+      if (tokenRefreshRef.current) clearInterval(tokenRefreshRef.current);
     };
   }, [user]);
 
@@ -148,7 +213,6 @@ export default function SessionGuard({ children }) {
     );
   }
 
-  // ─── Refresh Indicator (subtle, non-blocking) ─────────────────
   return (
     <>
       {refreshStatus === 'refreshing' && (

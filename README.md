@@ -1,12 +1,12 @@
 <div align="center">
 
-<img src="https://fivpilot.com/images/logo.svg" alt="Antigravity Lab" width="200" />
+<img src="https://ultraquota.com/images/logo.svg" alt="Antigravity Lab" width="200" />
 
 # Antigravity Lab
 
 **Google Antigravity Accounts Management — Desktop Client**
 
-🌐 [**Get Premium Accounts → fivpilot.com**](https://fivpilot.com)
+🌐 [**Get Premium Accounts → ultraquota.com**](https://ultraquota.com)
 
 [![Release](https://img.shields.io/github/v/release/devzoic/antigravity-lab?style=flat-square&color=blue)](https://github.com/devzoic/antigravity-lab/releases)
 [![License](https://img.shields.io/github/license/devzoic/antigravity-lab?style=flat-square)](LICENSE)
@@ -19,7 +19,7 @@
 ## ✨ What is Antigravity Lab?
 
 <p align="center">
-  <img src="https://fivpilot.com/images/antigravity-logo.png" alt="Antigravity" width="120" />
+  <img src="https://ultraquota.com/images/antigravity-logo.png" alt="Antigravity" width="120" />
 </p>
 
 Antigravity Lab is a professional desktop client for managing and switching between **Google Antigravity** accounts. It provides secure token injection, seamless one-click account switching, and always-on background access via the system tray.
@@ -29,14 +29,14 @@ Antigravity Lab is a professional desktop client for managing and switching betw
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="https://fivpilot.com/images/screenshot-web.png" alt="Web Dashboard" width="700" />
+  <img src="https://ultraquota.com/images/screenshot-web.png" alt="Web Dashboard" width="700" />
 </p>
 <p align="center"><em>Web Dashboard — Manage your accounts & subscriptions</em></p>
 
 <br />
 
 <p align="center">
-  <img src="https://fivpilot.com/images/screenshot-client.png" alt="Desktop Client" width="700" />
+  <img src="https://ultraquota.com/images/screenshot-client.png" alt="Desktop Client" width="700" />
 </p>
 <p align="center"><em>Desktop Client — One-click account switching & token injection</em></p>
 

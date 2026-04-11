@@ -1,9 +1,5 @@
 const API_URL = import.meta.env.VITE_API_URL || 'https://google.test/api';
 
-// Dynamically use PROD proxy URL when the Tauri app is built for release, otherwise use DEV proxy URL
-export const PROXY_URL = import.meta.env.PROD
-    ? (import.meta.env.VITE_PROXY_URL_PROD || 'https://proxy.devzoic.com')
-    : (import.meta.env.VITE_PROXY_URL_DEV || 'https://google.test:4433');
 class ApiService {
     constructor() {
         this.token = localStorage.getItem('auth_token') || null;
@@ -83,7 +79,6 @@ class ApiService {
         return this.request('POST', `/quota/refresh/${accountId}`);
     }
 
-
     reportUsage(accountId, requests, model = null) {
         return this.request('POST', '/usage/report', { account_id: accountId, requests, model });
     }
@@ -114,11 +109,6 @@ class ApiService {
         if (transactionId) formData.append('transaction_id', transactionId);
         if (proofFile) formData.append('proof_file', proofFile);
         return this.request('POST', '/payments/submit', formData, true);
-    }
-
-    // Proxy route token (signed, tamper-proof user identification)
-    getRouteToken() {
-        return this.request('POST', '/proxy/route-token');
     }
 }
 

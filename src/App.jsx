@@ -5,7 +5,7 @@ import UpdateBanner, { APP_VERSION } from './components/UpdateBanner';
 import Icon from './components/Icon';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
-import ConnectionPage from './pages/ConnectionPage';
+
 import SettingsPage from './pages/SettingsPage';
 import './App.css';
 
@@ -14,7 +14,6 @@ function Sidebar({ currentPage, setPage }) {
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', section: 'main' },
-    { id: 'connection', label: 'IDE Connection', icon: 'monitor', section: 'main' },
     { id: 'settings', label: 'Settings', icon: 'settings', section: 'system' },
   ];
 
@@ -114,7 +113,6 @@ function AppContent() {
       <Sidebar currentPage={currentPage} setPage={setPage} />
       <main className="main-content">
         {currentPage === 'dashboard' && <DashboardPage setPage={setPage} />}
-        {currentPage === 'connection' && <ConnectionPage />}
         {currentPage === 'settings' && <SettingsPage />}
       </main>
     </div>
