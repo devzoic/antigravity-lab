@@ -207,7 +207,7 @@ async fn kill_antigravity() -> Result<String, String> {
     Ok(format!("Killed {} Antigravity processes", killed))
 }
 
-/// Kill and relaunch Antigravity IDE (primary) so it reads the freshly injected token.
+/// Kill and relaunch Antigravity products so they read the freshly injected token.
 #[tauri::command]
 async fn restart_antigravity() -> Result<String, String> {
     let kill_result = kill_antigravity().await?;
@@ -216,12 +216,16 @@ async fn restart_antigravity() -> Result<String, String> {
     
     #[cfg(target_os = "macos")]
     {
-        // Launch Antigravity IDE as the primary target
-        std::process::Command::new("open")
+        // Relaunch both Antigravity IDE and Antigravity App (agent-only)
+        // open -a is fire-and-forget; if the app doesn't exist it simply fails
+        let _ = std::process::Command::new("open")
             .arg("-a")
             .arg("Antigravity IDE")
-            .spawn()
-            .map_err(|e| format!("Failed to relaunch Antigravity IDE: {}", e))?;
+            .spawn();
+        let _ = std::process::Command::new("open")
+            .arg("-a")
+            .arg("Antigravity")
+            .spawn();
     }
     #[cfg(target_os = "windows")]
     {
@@ -264,7 +268,7 @@ async fn restart_antigravity() -> Result<String, String> {
         drop(launched);
     }
     
-    Ok(format!("{} — relaunched Antigravity IDE", kill_result))
+    Ok(format!("{} — relaunched Antigravity", kill_result))
 }
 
 

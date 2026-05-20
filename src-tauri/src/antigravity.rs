@@ -95,7 +95,8 @@ pub fn get_all_db_paths() -> Vec<PathBuf> {
 }
 
 /// Inject OAuth token into Antigravity's SQLite database
-/// Supports both new format (≥1.16.5) and old format
+/// Supports both new format (≥1.16.5) and old format,
+/// plus the Antigravity App's `antigravityAuthStatus` JSON key.
 pub fn inject_token(
     db_path: &PathBuf,
     access_token: &str,
@@ -106,6 +107,12 @@ pub fn inject_token(
     let new_result = inject_new_format(db_path, access_token, refresh_token, expiry);
     let old_result = inject_old_format(db_path, access_token, refresh_token, expiry);
 
+    // Also inject into antigravityAuthStatus (used by Antigravity App / agent-only)
+    let auth_status_result = inject_auth_status(db_path, access_token);
+    if let Err(ref e) = auth_status_result {
+        log::warn!("antigravityAuthStatus injection note: {}", e);
+    }
+
     if new_result.is_ok() || old_result.is_ok() {
         Ok("Token injection successful — restart Antigravity to apply changes".to_string())
     } else {
@@ -115,6 +122,70 @@ pub fn inject_token(
             old_result.err()
         ))
     }
+}
+
+/// Inject/update the `antigravityAuthStatus` JSON key used by the Antigravity App (agent-only).
+/// This key stores `{ name, email, apiKey, userStatusProtoBinaryBase64 }`.
+/// If an existing entry exists, we update only `apiKey` (the access token), preserving everything else.
+/// If no entry exists, we create a minimal one with the token.
+fn inject_auth_status(db_path: &PathBuf, access_token: &str) -> Result<String, String> {
+    let conn = Connection::open(db_path)
+        .map_err(|e| format!("Failed to open database: {}", e))?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| format!("Failed to set busy timeout: {}", e))?;
+
+    // Check if an existing antigravityAuthStatus entry exists
+    let existing: Result<String, _> = conn.query_row(
+        "SELECT value FROM ItemTable WHERE key = ?",
+        ["antigravityAuthStatus"],
+        |row| row.get(0),
+    );
+
+    let new_value = match existing {
+        Ok(current_json) => {
+            // Parse existing JSON, update only the apiKey field
+            match serde_json::from_str::<serde_json::Value>(&current_json) {
+                Ok(mut obj) => {
+                    if let Some(map) = obj.as_object_mut() {
+                        map.insert(
+                            "apiKey".to_string(),
+                            serde_json::Value::String(access_token.to_string()),
+                        );
+                    }
+                    serde_json::to_string(&obj)
+                        .map_err(|e| format!("Failed to serialize auth status: {}", e))?
+                }
+                Err(_) => {
+                    // Existing value isn't valid JSON — create fresh
+                    create_minimal_auth_status(access_token)
+                }
+            }
+        }
+        Err(_) => {
+            // No existing entry — create a minimal one
+            create_minimal_auth_status(access_token)
+        }
+    };
+
+    conn.execute(
+        "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)",
+        ["antigravityAuthStatus", &new_value],
+    )
+    .map_err(|e| format!("Failed to write antigravityAuthStatus: {}", e))?;
+
+    Ok("antigravityAuthStatus updated".to_string())
+}
+
+/// Create a minimal antigravityAuthStatus JSON with just the access token.
+/// The Antigravity App will populate name/email/userStatus on its own after launch.
+fn create_minimal_auth_status(access_token: &str) -> String {
+    let obj = serde_json::json!({
+        "apiKey": access_token,
+        "name": "",
+        "email": "",
+        "userStatusProtoBinaryBase64": ""
+    });
+    obj.to_string()
 }
 
 // ─── Protobuf Helpers (simplified) ──────────────────────────────────────────
@@ -364,11 +435,12 @@ pub fn wipe_tokens(db_path: &PathBuf) -> Result<String, String> {
     conn.busy_timeout(std::time::Duration::from_secs(5))
         .map_err(|e| format!("Failed to set busy timeout: {}", e))?;
 
-    // Delete token entries (both formats)
+    // Delete token entries (both formats + Antigravity App auth status)
     let keys = [
         "antigravityUnifiedStateSync.oauthToken",
         "jetskiStateSync.agentManagerInitState",
         "antigravityOnboarding",
+        "antigravityAuthStatus",
     ];
 
     let mut deleted = 0;
