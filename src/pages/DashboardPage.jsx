@@ -102,9 +102,9 @@ export default function DashboardPage({ setPage }) {
           
           // 5. Auto-restart IDE to pick up the new token
           await invoke('restart_antigravity');
-          setActivateMsg(`✓ ${acc.email} activated — Antigravity restarted`);
+          setActivateMsg(`✓ ${acc.email} activated — Antigravity IDE restarted`);
         } catch (e) {
-          setActivateMsg(`✓ ${acc.email} activated — restart Antigravity manually`);
+          setActivateMsg(`✓ ${acc.email} activated — restart Antigravity IDE manually`);
         }
       } else {
         setError(`${acc.email} has no valid token. Refresh quota first.`);
@@ -315,9 +315,9 @@ export default function DashboardPage({ setPage }) {
                       {activating === acc.id ? (
                         <><div className="btn-spinner" /> Activating...</>
                       ) : activeEmail === acc.email ? (
-                        <><Icon name="check" size={14} /> Active in Antigravity</>
+                        <><Icon name="check" size={14} /> Active in Antigravity IDE</>
                       ) : (
-                        <><Icon name="zap" size={14} /> Use in Antigravity</>
+                        <><Icon name="zap" size={14} /> Use in Antigravity IDE</>
                       )}
                     </button>
                   </div>

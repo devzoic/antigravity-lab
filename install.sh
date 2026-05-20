@@ -8,7 +8,7 @@
 set -euo pipefail
 
 REPO="devzoic/antigravity-lab"
-APP_NAME="Antigravity Lab"
+APP_NAME="Ultra Quota"
 VERSION="${1:-latest}"
 
 # ── Colors ──

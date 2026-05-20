@@ -79,10 +79,10 @@ impl CaManager {
         params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
         params
             .distinguished_name
-            .push(rcgen::DnType::CommonName, "Antigravity Ephemeral CA");
+            .push(rcgen::DnType::CommonName, "Ultra Quota Ephemeral CA");
         params
             .distinguished_name
-            .push(rcgen::DnType::OrganizationName, "Antigravity Lab");
+            .push(rcgen::DnType::OrganizationName, "Ultra Quota");
 
         let ca_cert = params
             .self_signed(&ca_key)

@@ -192,7 +192,7 @@ export default function SessionGuard({ children }) {
             {revokeReason}
           </p>
           <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginBottom: '24px' }}>
-            Antigravity access has been terminated and tokens have been wiped from this device.
+            Antigravity IDE access has been terminated and tokens have been wiped from this device.
           </p>
           <button
             onClick={() => window.location.reload()}

@@ -6,7 +6,7 @@
 
 $ErrorActionPreference = "Stop"
 $REPO = "devzoic/antigravity-lab"
-$APP_NAME = "Antigravity Lab"
+$APP_NAME = "Ultra Quota"
 
 Write-Host ""
 Write-Host "  $APP_NAME — Windows Installer" -ForegroundColor Cyan

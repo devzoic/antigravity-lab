@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="https://ultraquota.com/images/logo.svg" alt="Antigravity Lab" width="200" />
+<img src="https://ultraquota.com/images/logo.svg" alt="Ultra Quota" width="200" />
 
-# Antigravity Lab
+# Ultra Quota
 
 **Google Antigravity Accounts Management — Desktop Client**
 
@@ -16,13 +16,13 @@
 
 ---
 
-## ✨ What is Antigravity Lab?
+## ✨ What is Ultra Quota?
 
 <p align="center">
   <img src="https://ultraquota.com/images/antigravity-logo.png" alt="Antigravity" width="120" />
 </p>
 
-Antigravity Lab is a professional desktop client for managing and switching between **Google Antigravity** accounts. It provides secure token injection, seamless one-click account switching, and always-on background access via the system tray.
+Ultra Quota is a professional desktop client for managing and switching between **Google Antigravity** accounts. It provides secure token injection, seamless one-click account switching, and always-on background access via the system tray.
 
 ---
 

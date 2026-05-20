@@ -2,61 +2,96 @@ use base64::{engine::general_purpose, Engine as _};
 use rusqlite::Connection;
 use std::path::PathBuf;
 
-/// Get Antigravity database path (cross-platform)
-/// Checks portable mode first, then standard OS-specific paths
-pub fn get_db_path() -> Result<PathBuf, String> {
-    // Standard mode: use system default path
+/// Get all Antigravity database paths (cross-platform).
+/// Returns paths for both Antigravity IDE (primary) and classic Antigravity,
+/// so tokens can be injected into both products simultaneously.
+pub fn get_all_db_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
     #[cfg(target_os = "macos")]
     {
-        let home = dirs::home_dir().ok_or("Failed to get home directory")?;
-        let path = home.join("Library/Application Support/Antigravity/User/globalStorage/state.vscdb");
-        if path.exists() {
-            return Ok(path);
+        if let Some(home) = dirs::home_dir() {
+            // Antigravity IDE (primary target)
+            let ide_path = home.join("Library/Application Support/Antigravity IDE/User/globalStorage/state.vscdb");
+            let ide_alt = home.join("Library/Application Support/Antigravity IDE/globalStorage/state.vscdb");
+            if ide_path.exists() {
+                paths.push(ide_path);
+            } else if ide_alt.exists() {
+                paths.push(ide_alt);
+            }
+
+            // Classic Antigravity (secondary target)
+            let classic_path = home.join("Library/Application Support/Antigravity/User/globalStorage/state.vscdb");
+            let classic_alt = home.join("Library/Application Support/Antigravity/globalStorage/state.vscdb");
+            if classic_path.exists() {
+                paths.push(classic_path);
+            } else if classic_alt.exists() {
+                paths.push(classic_alt);
+            }
         }
-        // Also check Cursor-style path
-        let alt_path = home.join("Library/Application Support/Antigravity/globalStorage/state.vscdb");
-        if alt_path.exists() {
-            return Ok(alt_path);
-        }
-        Ok(path) // Return default even if not found yet
     }
 
     #[cfg(target_os = "windows")]
     {
-        let appdata = std::env::var("APPDATA")
-            .map_err(|_| "Failed to get APPDATA environment variable".to_string())?;
-        let path = PathBuf::from(&appdata)
-            .join("Antigravity")
-            .join("User")
-            .join("globalStorage")
-            .join("state.vscdb");
-        if path.exists() {
-            return Ok(path);
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            // Antigravity IDE (primary target)
+            let ide_path = PathBuf::from(&appdata)
+                .join("Antigravity IDE")
+                .join("User")
+                .join("globalStorage")
+                .join("state.vscdb");
+            let ide_alt = PathBuf::from(&appdata)
+                .join("Antigravity IDE")
+                .join("globalStorage")
+                .join("state.vscdb");
+            if ide_path.exists() {
+                paths.push(ide_path);
+            } else if ide_alt.exists() {
+                paths.push(ide_alt);
+            }
+
+            // Legacy Antigravity (secondary — older installs used this folder)
+            let classic_path = PathBuf::from(&appdata)
+                .join("Antigravity")
+                .join("User")
+                .join("globalStorage")
+                .join("state.vscdb");
+            let classic_alt = PathBuf::from(&appdata)
+                .join("Antigravity")
+                .join("globalStorage")
+                .join("state.vscdb");
+            if classic_path.exists() {
+                paths.push(classic_path);
+            } else if classic_alt.exists() {
+                paths.push(classic_alt);
+            }
         }
-        // Alternate
-        let alt_path = PathBuf::from(&appdata)
-            .join("Antigravity")
-            .join("globalStorage")
-            .join("state.vscdb");
-        if alt_path.exists() {
-            return Ok(alt_path);
-        }
-        Ok(path)
     }
 
     #[cfg(target_os = "linux")]
     {
-        let home = dirs::home_dir().ok_or("Failed to get home directory")?;
-        let path = home.join(".config/Antigravity/User/globalStorage/state.vscdb");
-        if path.exists() {
-            return Ok(path);
+        if let Some(home) = dirs::home_dir() {
+            // Antigravity IDE (primary target)
+            let ide_path = home.join(".config/Antigravity IDE/User/globalStorage/state.vscdb");
+            let ide_alt = home.join(".config/Antigravity IDE/globalStorage/state.vscdb");
+            if ide_path.exists() {
+                paths.push(ide_path);
+            } else if ide_alt.exists() {
+                paths.push(ide_alt);
+            }
+
+            // Classic Antigravity (secondary target)
+            let classic_path = home.join(".config/Antigravity/User/globalStorage/state.vscdb");
+            let classic_alt = home.join(".config/Antigravity/globalStorage/state.vscdb");
+            if classic_path.exists() {
+                paths.push(classic_path);
+            } else if classic_alt.exists() {
+                paths.push(classic_alt);
+            }
         }
-        let alt_path = home.join(".config/Antigravity/globalStorage/state.vscdb");
-        if alt_path.exists() {
-            return Ok(alt_path);
-        }
-        Ok(path)
     }
+
+    paths
 }
 
 /// Inject OAuth token into Antigravity's SQLite database

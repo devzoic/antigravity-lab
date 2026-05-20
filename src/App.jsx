@@ -29,15 +29,10 @@ function Sidebar({ currentPage, setPage }) {
       {/* Brand */}
       <div className="sidebar-brand">
         <div className="brand-icon">
-          <svg width="18" height="18" viewBox="0 0 32 32" fill="none">
-            <defs><linearGradient id="sg" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stopColor="#00d68f"/><stop offset="100%" stopColor="#4285F4"/></linearGradient></defs>
-            <path d="M16 4 L16 24" stroke="url(#sg)" strokeWidth="3" strokeLinecap="round"/>
-            <path d="M9 14 L16 6 L23 14" stroke="url(#sg)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-            <ellipse cx="16" cy="22" rx="8" ry="3" stroke="url(#sg)" strokeWidth="1.5" fill="none" opacity="0.5"/>
-          </svg>
+          <img src="/logo.png" alt="Ultra Quota" width="28" height="28" style={{ borderRadius: 6 }} />
         </div>
         <div className="brand-text">
-          <span className="brand-name">Antigravity <span className="brand-accent">Lab</span></span>
+          <span className="brand-name">Ultra <span className="brand-accent">Quota</span></span>
           <span className="brand-version">v{APP_VERSION}</span>
         </div>
       </div>

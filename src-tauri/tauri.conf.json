@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Antigravity Lab",
-  "version": "1.0.19",
+  "productName": "Ultra Quota",
+  "version": "1.0.20",
   "identifier": "com.aidashboard.client",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Antigravity Lab",
+        "title": "Ultra Quota",
         "width": 980,
         "height": 680,
         "resizable": true,
@@ -29,7 +29,7 @@
       "id": "main-tray",
       "iconPath": "icons/icon.png",
       "iconAsTemplate": true,
-      "tooltip": "Antigravity Lab"
+      "tooltip": "Ultra Quota"
     }
   },
   "bundle": {

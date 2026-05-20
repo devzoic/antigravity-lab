@@ -2,24 +2,42 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-/// Antigravity settings.json path (cross-platform)
-fn settings_json_path() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or("Failed to get home directory")?;
-
-    #[cfg(target_os = "macos")]
-    let path = home.join("Library/Application Support/Antigravity/User/settings.json");
-
-    #[cfg(target_os = "windows")]
-    let path = {
-        let appdata = std::env::var("APPDATA")
-            .map_err(|_| "Failed to get APPDATA".to_string())?;
-        PathBuf::from(appdata).join("Antigravity/User/settings.json")
+/// Get all Antigravity settings.json paths (cross-platform).
+/// Returns paths for both Antigravity IDE (primary) and classic Antigravity.
+fn all_settings_json_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    let home = match dirs::home_dir() {
+        Some(h) => h,
+        None => return paths,
     };
 
-    #[cfg(target_os = "linux")]
-    let path = home.join(".config/Antigravity/User/settings.json");
+    #[cfg(target_os = "macos")]
+    {
+        // Antigravity IDE (primary)
+        let ide_path = home.join("Library/Application Support/Antigravity IDE/User/settings.json");
+        paths.push(ide_path);
+        // Classic Antigravity
+        let classic_path = home.join("Library/Application Support/Antigravity/User/settings.json");
+        paths.push(classic_path);
+    }
 
-    Ok(path)
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            // Antigravity IDE (primary)
+            paths.push(PathBuf::from(&appdata).join("Antigravity IDE/User/settings.json"));
+            // Legacy Antigravity (secondary)
+            paths.push(PathBuf::from(&appdata).join("Antigravity/User/settings.json"));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        paths.push(home.join(".config/Antigravity IDE/User/settings.json"));
+        paths.push(home.join(".config/Antigravity/User/settings.json"));
+    }
+
+    paths
 }
 
 /// The proxy keys we manage in settings.json
@@ -73,21 +91,20 @@ fn sanitize_jsonc(input: &str) -> String {
 }
 
 /// Read settings.json as a serde_json::Value (or empty object if missing)
-fn read_settings() -> Result<(PathBuf, Value), String> {
-    let path = settings_json_path()?;
+fn read_settings(path: &PathBuf) -> Result<Value, String> {
     if !path.exists() {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("Failed to create settings dir: {}", e))?;
         }
-        return Ok((path, serde_json::json!({})));
+        return Ok(serde_json::json!({}));
     }
-    let content = fs::read_to_string(&path)
+    let content = fs::read_to_string(path)
         .map_err(|e| format!("Failed to read settings.json: {}", e))?;
     let sanitized = sanitize_jsonc(&content);
     let json: Value = serde_json::from_str(&sanitized)
         .map_err(|e| format!("Failed to parse settings.json: {}", e))?;
-    Ok((path, json))
+    Ok(json)
 }
 
 /// Write settings.json back to disk (pretty-printed)
@@ -100,20 +117,31 @@ fn write_settings(path: &PathBuf, settings: &Value) -> Result<(), String> {
 }
 
 
-/// Remove proxy settings from Antigravity's settings.json
+/// Remove proxy settings from all Antigravity settings.json files (IDE + classic)
 #[tauri::command]
 pub async fn restore_gemini_config() -> Result<String, String> {
-    let (path, mut settings) = read_settings()?;
+    let paths = all_settings_json_paths();
+    let mut updated = 0;
 
-    let obj = settings.as_object_mut()
-        .ok_or("settings.json is not a JSON object")?;
-
-    for key in &PROXY_KEYS {
-        obj.remove(*key);
+    for path in &paths {
+        if !path.exists() {
+            continue;
+        }
+        match read_settings(path) {
+            Ok(mut settings) => {
+                if let Some(obj) = settings.as_object_mut() {
+                    for key in &PROXY_KEYS {
+                        obj.remove(*key);
+                    }
+                    if write_settings(path, &settings).is_ok() {
+                        updated += 1;
+                    }
+                }
+            }
+            Err(_) => continue,
+        }
     }
 
-    write_settings(&path, &settings)?;
-
-    Ok("Proxy settings removed — restart Antigravity to apply".to_string())
+    Ok(format!("Proxy settings removed from {} config(s) — restart IDE to apply", updated))
 }
 
